@@ -1,0 +1,31 @@
+{
+    "name": "visavi/motor-orm",
+    "description": "",
+    "keywords": ["orm", "csv", "text orm"],
+    "homepage": "https://github.com/visavi/motor-orm",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Alexander Grigorev",
+            "email": "admin@visavi.net",
+            "homepage": "https://visavi.net"
+        }
+    ],
+    "require": {
+        "php": "^8.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "MotorORM\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MotorORM\\Tests\\": "tests"
+        }
+    },
+    "minimum-stability": "stable"
+}
