@@ -21,7 +21,7 @@ use UnexpectedValueException;
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
- * @version 1.0
+ * @version 2.0
  */
 abstract class Model
 {
@@ -42,13 +42,14 @@ abstract class Model
     protected SplFileObject $file;
     protected array $orders = [];
     protected ?stdClass $attr;
+    protected ?string $paginateView = null;
 
     /**
      * Begin querying the model.
      *
      * @return $this
      */
-    public static function query(): self
+    public static function query(): static
     {
         return (new static())->open();
     }
@@ -58,7 +59,7 @@ abstract class Model
      *
      * @return $this
      */
-    public function open(): self
+    public function open(): static
     {
         $this->file = new SplFileObject($this->filePath, 'a+');
         $this->file->setFlags(
@@ -87,7 +88,7 @@ abstract class Model
      *
      * @return $this
      */
-    public function reverse(): self
+    public function reverse(): static
     {
         $this->iterator = new ArrayIterator(array_reverse(iterator_to_array($this->iterator)));
 
@@ -125,7 +126,7 @@ abstract class Model
      *
      * @return $this
      */
-    public function where(string $field, mixed $operator, mixed $value = null): self
+    public function where(string $field, mixed $operator, mixed $value = null): static
     {
         $key   = $this->getKeyByField($field);
         $value = (string) $value;
@@ -151,7 +152,7 @@ abstract class Model
      *
      * @return $this
      */
-    public function whereIn(string $field, array $values): self
+    public function whereIn(string $field, array $values): static
     {
         $key    = $this->getKeyByField($field);
         $values = array_flip($values);
@@ -172,7 +173,7 @@ abstract class Model
      *
      * @return $this
      */
-    public function whereNotIn(string $field, array $values): self
+    public function whereNotIn(string $field, array $values): static
     {
         $key    = $this->getKeyByField($field);
         $values = array_flip($values);
@@ -193,7 +194,7 @@ abstract class Model
      *
      * @return $this
      */
-    public function orderBy(string $field, ?string $sort = self::SORT_ASC): self
+    public function orderBy(string $field, ?string $sort = self::SORT_ASC): static
     {
         if (! in_array($sort, self::SORT_TYPES, true)) {
             throw new InvalidArgumentException(sprintf('%s(), Argument #2 must be a valid sort flag', __METHOD__));
@@ -211,7 +212,7 @@ abstract class Model
      *
      * @return $this
      */
-    public function orderByDesc(string $field): self
+    public function orderByDesc(string $field): static
     {
         $this->orders[$field] = self::SORT_DESC;
 
@@ -258,14 +259,32 @@ abstract class Model
     /**
      * Get records
      *
-     * @return array
+     * @return Collection
      */
-    public function get(): array
+    public function get(): Collection
     {
         $this->sorting();
         $this->iterator = new LimitIterator($this->iterator, $this->offset, $this->limit);
 
-        return $this->mapper($this->iterator);
+        return new Collection($this->mapper($this->iterator));
+    }
+
+    /**
+     * Get records with paginate
+     *
+     * @param int $limit
+     *
+     * @return CollectionPaginate
+     */
+    public function paginate(int $limit): CollectionPaginate
+    {
+        $paginator = new Paginator($this->paginateView);
+        $paginator = $paginator->create($this->count(), $limit);
+
+        $this->sorting();
+        $this->iterator = new LimitIterator($this->iterator, $paginator->offset, $paginator->limit);
+
+        return new CollectionPaginate($this->mapper($this->iterator), $paginator);
     }
 
     /**
@@ -285,7 +304,7 @@ abstract class Model
      *
      * @return $this
      */
-    public function limit(int $limit): self
+    public function limit(int $limit): static
     {
         if ($limit < -1) {
             throw new InvalidArgumentException(sprintf('%s() expects the limit to be greater or equal to -1, %s given', __METHOD__, $limit));
@@ -307,7 +326,7 @@ abstract class Model
      *
      * @return $this
      */
-    public function offset(int $offset): self
+    public function offset(int $offset): static
     {
         if ($offset < 0) {
             throw new InvalidArgumentException(sprintf('%s() expects the offset to be a positive integer or 0, %s given', __METHOD__, $offset));
