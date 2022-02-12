@@ -24,7 +24,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      * Initializes a new collection.
      */
     public function __construct(
-        private array $elements = [],
+        protected array $elements = [],
     ) {}
 
     /**

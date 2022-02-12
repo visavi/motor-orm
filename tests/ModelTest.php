@@ -2,6 +2,8 @@
 
 namespace MotorORM\Tests;
 
+use MotorORM\Collection;
+use MotorORM\CollectionPaginate;
 use MotorOrm\Tests\Models\Test;
 use MotorOrm\Tests\Models\Test2;
 use MotorOrm\Tests\Models\Test3;
@@ -31,7 +33,7 @@ final class ModelTest extends TestCase
     {
         $find = Test::query()->where('name', 'Миша')->limit(1)->get();
 
-        $this->assertIsArray($find);
+        $this->assertInstanceOf(Collection::class, $find);
         $this->assertIsObject($find[0]);
         $this->assertObjectHasAttribute('id', $find[0]);
         $this->assertEquals('Миша', $find[0]->name);
@@ -63,7 +65,7 @@ final class ModelTest extends TestCase
     {
         $find = Test::query()->where('name', 'Миша')->where('title', 'Заголовок10')->get();
 
-        $this->assertIsArray($find);
+        $this->assertInstanceOf(Collection::class, $find);
         $this->assertIsObject($find[0]);
         $this->assertObjectHasAttribute('id', $find[0]);
         $this->assertEquals('Миша', $find[0]->name);
@@ -79,13 +81,32 @@ final class ModelTest extends TestCase
     {
         $find = Test::query()->where('time', '>=', 1231231235)->get();
 
-        $this->assertIsArray($find);
+        $this->assertInstanceOf(Collection::class, $find);
+        $this->assertClassHasAttribute('elements', Collection::class);
+        $this->assertClassNotHasAttribute('paginator', Collection::class);
         $this->assertIsObject($find[0]);
         $this->assertCount(3, $find);
         $this->assertObjectHasAttribute('id', $find[0]);
         $this->assertGreaterThanOrEqual('1231231235', $find[0]->time);
         $this->assertGreaterThanOrEqual('1231231235', $find[1]->time);
         $this->assertGreaterThanOrEqual('1231231235', $find[2]->time);
+    }
+
+    /**
+     * Find by condition
+     *
+     * @covers ::where()
+     */
+    public function testWherePaginate(): void
+    {
+        $find = Test::query()->where('time', '>=', 1231231235)->paginate(2);
+
+        $this->assertInstanceOf(CollectionPaginate::class, $find);
+        $this->assertClassHasAttribute('elements', CollectionPaginate::class);
+        $this->assertClassHasAttribute('paginator', CollectionPaginate::class);
+        $this->assertIsObject($find[0]);
+        $this->assertCount(2, $find);
+        $this->assertObjectHasAttribute('id', $find[0]);
     }
 
     /**
@@ -97,7 +118,7 @@ final class ModelTest extends TestCase
     {
         $find = Test::query()->whereIn('id', [1, 3, 5, 7])->get();
 
-        $this->assertIsArray($find);
+        $this->assertInstanceOf(Collection::class, $find);
         $this->assertCount(4, $find);
         $this->assertEquals('1', $find[0]->id);
         $this->assertEquals('3', $find[1]->id);
@@ -114,7 +135,7 @@ final class ModelTest extends TestCase
     {
         $find = Test::query()->whereNotIn('id', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])->get();
 
-        $this->assertIsArray($find);
+        $this->assertInstanceOf(Collection::class, $find);
         $this->assertCount(10, $find);
         $this->assertEquals('11', $find[0]->id);
         $this->assertEquals('12', $find[1]->id);

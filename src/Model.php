@@ -226,7 +226,7 @@ abstract class Model
      *
      * @return static|null
      */
-    public function find(int|string $id): ?self
+    public function find(int|string $id): ?static
     {
         $find = $this->where($this->getPrimaryKey(), $id)->first();
 
@@ -242,7 +242,7 @@ abstract class Model
      *
      * @return static|null
      */
-    public function first(): ?self
+    public function first(): ?static
     {
         $this->sorting();
         $this->iterator = new LimitIterator($this->iterator, 0, 1);
@@ -276,7 +276,7 @@ abstract class Model
      *
      * @return CollectionPaginate
      */
-    public function paginate(int $limit): CollectionPaginate
+    public function paginate(int $limit = 10): CollectionPaginate
     {
         $paginator = new Paginator($this->paginateView);
         $paginator = $paginator->create($this->count(), $limit);
