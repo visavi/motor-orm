@@ -42,6 +42,7 @@ abstract class Model
     protected SplFileObject $file;
     protected array $orders = [];
     protected ?stdClass $attr;
+    protected ?string $paginateName = null;
     protected ?string $paginateView = null;
 
     /**
@@ -284,7 +285,7 @@ abstract class Model
      */
     public function paginate(int $limit = 10): CollectionPaginate
     {
-        $paginator = new Pagination($this->paginateView);
+        $paginator = new Pagination($this->paginateView, $this->paginateName);
         $paginator = $paginator->create($this->count(), $limit);
 
         $this->sorting();

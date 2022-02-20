@@ -22,10 +22,10 @@ class Pagination
 
     public function __construct(
         protected ?string $view = null,
+        protected ?string $pageName = null,
     ) {
-        if ($view === null) {
-            $this->view = __DIR__ . '/views/bootstrap5.php';
-        }
+        $this->pageName = $pageName ?: 'page';
+        $this->view = $view ?: __DIR__ . '/views/bootstrap5.php';
     }
 
     /**
@@ -55,7 +55,9 @@ class Pagination
      */
     public function offset(): int
     {
-        if ($this->total && $this->page * $this->limit >= $this->total) {
+        if ($this->total === 0) {
+            $this->page = 1;
+        } elseif ($this->total && $this->page * $this->limit >= $this->total) {
             $this->page = (int) ceil($this->total / $this->limit);
         }
 
@@ -69,7 +71,7 @@ class Pagination
      */
     public function page(): int
     {
-        return ! empty($_GET['page']) ? abs((int) $_GET['page']) : 1;
+        return ! empty($_GET[$this->pageName]) ? abs((int) $_GET[$this->pageName]) : 1;
     }
 
     /**
@@ -90,6 +92,7 @@ class Pagination
 
         if ($this->page !== 1) {
             $pages[] = [
+                'link' => $this->pageName . '=' . $this->page - 1,
                 'page' => $this->page - 1,
                 'name' => '«',
             ];
@@ -97,6 +100,7 @@ class Pagination
 
         if ($this->page > $this->crumbs + 1) {
             $pages[] = [
+                'link' => $this->pageName . '=1',
                 'page' => 1,
                 'name' => 1,
             ];
@@ -115,6 +119,7 @@ class Pagination
                 ];
             } else {
                 $pages[] = [
+                    'link' => $this->pageName . '=' . $i,
                     'page' => $i,
                     'name' => $i,
                 ];
@@ -128,6 +133,7 @@ class Pagination
                 ];
             }
             $pages[] = [
+                'link' => $this->pageName . '=' . $pageCount,
                 'page' => $pageCount,
                 'name' => $pageCount,
             ];
@@ -135,6 +141,7 @@ class Pagination
 
         if ($this->page !== $pageCount) {
             $pages[] = [
+                'link' => $this->pageName . '=' . $this->page + 1,
                 'page' => $this->page + 1,
                 'name' => '»',
             ];
@@ -167,5 +174,17 @@ class Pagination
     public function setView(string $view): void
     {
         $this->view = $view;
+    }
+
+    /**
+     * Set page name
+     *
+     * @param string $name
+     *
+     * @return void
+     */
+    public function setPageName(string $name): void
+    {
+        $this->pageName = $name;
     }
 }
