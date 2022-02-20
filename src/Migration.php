@@ -196,7 +196,6 @@ class Migration
         }
 
         $this->file->flock(LOCK_UN);
-        $this->model->open();
     }
 
     /**
