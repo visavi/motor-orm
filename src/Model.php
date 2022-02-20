@@ -284,7 +284,7 @@ abstract class Model
      */
     public function paginate(int $limit = 10): CollectionPaginate
     {
-        $paginator = new Paginator($this->paginateView);
+        $paginator = new Pagination($this->paginateView);
         $paginator = $paginator->create($this->count(), $limit);
 
         $this->sorting();

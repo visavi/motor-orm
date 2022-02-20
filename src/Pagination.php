@@ -12,7 +12,7 @@ namespace MotorORM;
  * @author  Alexander Grigorev <admin@visavi.net>
  * @version 2.0
  */
-class Paginator
+class Pagination
 {
     public int $limit;
     public int $total;
