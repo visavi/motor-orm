@@ -61,14 +61,7 @@ abstract class Model
      */
     public function open(): static
     {
-        $this->file = new SplFileObject($this->filePath, 'a+');
-        $this->file->setFlags(
-            SplFileObject::READ_AHEAD |
-            SplFileObject::SKIP_EMPTY |
-            SplFileObject::READ_CSV
-        );
-        $this->file->rewind();
-
+        $this->file    = $this->file();
         $this->headers = $this->headers();
         $this->primary = $this->getPrimaryKey();
 
@@ -81,6 +74,19 @@ abstract class Model
         );
 
         return $this;
+    }
+
+    public function file(): SplFileObject
+    {
+        $file = new SplFileObject($this->filePath, 'a+');
+        $file->setFlags(
+            SplFileObject::READ_AHEAD |
+            SplFileObject::SKIP_EMPTY |
+            SplFileObject::READ_CSV
+        );
+        $file->rewind();
+
+        return $file;
     }
 
     /**
@@ -259,7 +265,7 @@ abstract class Model
     /**
      * Get records
      *
-     * @return Collection
+     * @return Collection<static>|static[]
      */
     public function get(): Collection
     {
@@ -274,7 +280,7 @@ abstract class Model
      *
      * @param int $limit
      *
-     * @return CollectionPaginate
+     * @return CollectionPaginate<static>
      */
     public function paginate(int $limit = 10): CollectionPaginate
     {
@@ -389,6 +395,51 @@ abstract class Model
         return $values[$this->primary];
     }
 
+
+    /**
+     * Process
+     *
+     * @param Closure $closure
+     *
+     * @return void
+     */
+    private function process(Closure $closure): void
+    {
+        if (! $this->file->flock(LOCK_EX)) {
+            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->file->getFilename()));
+        }
+
+        $this->file->fseek(0);
+
+        $temp = new SplTempFileObject(-1);
+        $temp->setFlags(
+            SplFileObject::READ_AHEAD |
+            SplFileObject::SKIP_EMPTY |
+            SplFileObject::READ_CSV
+        );
+
+        while(! $this->file->eof()) {
+            $temp->fwrite($this->file->fread(4096));
+        }
+
+        $temp->rewind();
+        $this->file->ftruncate(0);
+        $this->file->fseek(0);
+
+        while ($temp->valid()) {
+            $current = $temp->current();
+
+            $closure($current);
+            $temp->next();
+        }
+
+        $this->file->flock(LOCK_UN);
+
+        //???
+        //$this->model->open();
+    }
+
+
     /**
      * Update records
      *
@@ -404,47 +455,20 @@ abstract class Model
             throw new UnexpectedValueException(sprintf('%s() called undefined column. Column "%s" does not exist', __METHOD__, key($diffKeys)));
         }
 
-        $updatedRows = 0;
+        $affectedRows = 0;
         $ids = array_column($this->mapper($this->iterator), $this->primary, $this->primary);
 
-        if (! $this->file->flock(LOCK_EX)) {
-            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->file->getFilename()));
-        }
-
-        $this->file->fseek(0);
-
-        $temp = new SplTempFileObject(-1);
-        $temp->setFlags(
-            SplFileObject::READ_AHEAD |
-            SplFileObject::SKIP_EMPTY |
-            SplFileObject::READ_CSV
-        );
-        while(! $this->file->eof()) {
-            $temp->fwrite($this->file->fread(1024));
-        }
-
-        $temp->rewind();
-        $this->file->ftruncate(0);
-        $this->file->fseek(0);
-
-        while ($temp->valid()) {
-            $current = $temp->current();
-
+        $this->process(function (&$current) use ($ids, $values, &$affectedRows) {
             if (isset($ids[$current[0]])) {
+                $affectedRows++;
                 $map = (array) $this->mapper($current);
-
-                $this->file->fputcsv(array_replace($map, $values));
-                $updatedRows++;
-            } else {
-                $this->file->fputcsv($current);
+                $current = array_replace($map, $values);
             }
 
-            $temp->next();
-        }
+            $this->file->fputcsv($current);
+        });
 
-        $this->file->flock(LOCK_UN);
-
-        return $updatedRows;
+        return $affectedRows;
     }
 
     /**
@@ -454,44 +478,18 @@ abstract class Model
      */
     public function delete(): int
     {
-        $deletedRows = 0;
+        $affectedRows = 0;
         $ids = array_column($this->mapper($this->iterator), $this->primary, $this->primary);
 
-        if (! $this->file->flock(LOCK_EX)) {
-            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->file->getFilename()));
-        }
-
-        $this->file->fseek(0);
-
-        $temp = new SplTempFileObject(-1);
-        $temp->setFlags(
-            SplFileObject::READ_AHEAD |
-            SplFileObject::SKIP_EMPTY |
-            SplFileObject::READ_CSV
-        );
-        while(! $this->file->eof()) {
-            $temp->fwrite($this->file->fread(1024));
-        }
-
-        $temp->rewind();
-        $this->file->ftruncate(0);
-        $this->file->fseek(0);
-
-        while ($temp->valid()) {
-            $current = $temp->current();
-
+        $this->process(function (&$current) use ($ids, &$affectedRows) {
             if (isset($ids[$current[0]])) {
-                $deletedRows++;
+                $affectedRows++;
             } else {
                 $this->file->fputcsv($current);
             }
+        });
 
-            $temp->next();
-        }
-
-        $this->file->flock(LOCK_UN);
-
-        return $deletedRows;
+        return $affectedRows;
     }
 
     /**
