@@ -258,7 +258,8 @@ abstract class Model
             return null;
         }
 
-        $this->attr = $this->mapper($this->iterator)[0];
+        $this->iterator->rewind();
+        $this->attr = $this->mapper($this->iterator->current());
 
         return $this;
     }
@@ -435,9 +436,6 @@ abstract class Model
         }
 
         $this->file->flock(LOCK_UN);
-
-        //???
-        //$this->model->open();
     }
 
 
@@ -586,7 +584,9 @@ abstract class Model
 
         $rows = [];
         foreach ($values as $line) {
-            $rows[] = (object) $combiner($line);
+            $clone = clone $this;
+            $clone->attr = (object) $combiner($line);
+            $rows[] = $clone;
         }
 
         return $rows;
