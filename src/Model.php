@@ -41,7 +41,7 @@ abstract class Model
     protected Iterator $iterator;
     protected SplFileObject $file;
     protected array $orders = [];
-    protected ?stdClass $attr;
+    protected array $attr = [];
     protected ?string $paginateName = null;
     protected ?string $paginateView = null;
 
@@ -515,7 +515,7 @@ abstract class Model
      * @return null
      */
     public function __get(string $field){
-        return $this->attr->$field ?? null;
+        return $this->attr[$field] ?? null;
     }
 
     /**
@@ -524,7 +524,7 @@ abstract class Model
      */
     public function __set(string $field, mixed $value): void
     {
-        $this->attr->$field = $value;
+        $this->attr[$field] = $value;
     }
 
     /**
@@ -534,7 +534,7 @@ abstract class Model
      */
     public function __isset(string $field)
     {
-        return isset($this->attr->$field);
+        return isset($this->attr[$field]);
     }
 
     /**
@@ -579,13 +579,13 @@ abstract class Model
         $combiner = $this->combiner();
 
         if (is_array($values)) {
-            return (object) $combiner($values);
+            return $combiner($values);
         }
 
         $rows = [];
         foreach ($values as $line) {
             $clone = clone $this;
-            $clone->attr = (object) $combiner($line);
+            $clone->attr = $combiner($line);
             $rows[] = $clone;
         }
 
@@ -611,9 +611,9 @@ abstract class Model
                 foreach ($this->orders as $field => $sort) {
                     if ($retVal === 0) {
                         if ($sort === self::SORT_ASC) {
-                            $retVal = $this->mapper($a)->$field <=> $this->mapper($b)->$field;
+                            $retVal = $this->mapper($a)[$field] <=> $this->mapper($b)[$field];
                         } else {
-                            $retVal = $this->mapper($b)->$field <=> $this->mapper($a)->$field;
+                            $retVal = $this->mapper($b)[$field] <=> $this->mapper($a)[$field];
                         }
                     }
                 }

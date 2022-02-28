@@ -26,6 +26,17 @@ final class ModelTest extends TestCase
     }
 
     /**
+     * Find by primary key empty
+     * @covers ::find()
+     */
+    public function testFindEmpty(): void
+    {
+        $find = Test::query()->find(777);
+
+        $this->assertNull($find);
+    }
+
+    /**
      * Find by name limit 1
      * @covers ::where()
      */
@@ -263,6 +274,30 @@ final class ModelTest extends TestCase
         $this->assertObjectHasAttribute('attr', $find);
         $this->assertEquals('Петя', $find->name);
         $this->assertEquals('Заголовок1', $find->title);
+    }
+
+    /**
+     * Get first line empty
+     *
+     * @covers ::first()
+     */
+    public function testFirstEmpty(): void
+    {
+        $find = Test3::query()->first();
+
+        $this->assertNull($find);
+    }
+
+    /**
+     * Get where first line empty
+     *
+     * @covers ::first()
+     */
+    public function testWhereFirstEmpty(): void
+    {
+        $find = Test::query()->where('name', 'something')->first();
+
+        $this->assertNull($find);
     }
 
     /**
