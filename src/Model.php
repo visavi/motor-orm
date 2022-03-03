@@ -10,6 +10,7 @@ use Closure;
 use InvalidArgumentException;
 use Iterator;
 use LimitIterator;
+use RuntimeException;
 use SplFileObject;
 use SplTempFileObject;
 use stdClass;
@@ -44,6 +45,8 @@ abstract class Model
     protected array $attr = [];
     protected ?string $paginateName = null;
     protected ?string $paginateView = null;
+    protected array $with = [];
+    protected array $relations = [];
 
     /**
      * Begin querying the model.
@@ -88,6 +91,16 @@ abstract class Model
         $file->rewind();
 
         return $file;
+    }
+
+    /**
+     * Get table
+     *
+     * @return string
+     */
+    public function getTable()
+    {
+        return basename($this->filePath, '.csv');
     }
 
     /**
@@ -589,7 +602,111 @@ abstract class Model
             $rows[] = $clone;
         }
 
+        // Parse relation
+        if ($this->with) {
+            $relations = [];
+            foreach ($this->with as $with) {
+                $v = $this->$with();
+                /** @var Model $model */
+                [$model, $localKey, $foreignKey] = $v;
+                $k = (new $model())->getTable() . '.' .  $localKey . '.' . $foreignKey;
+
+                foreach ($rows as $row) {
+                    if (! $row->attr[$localKey]) {
+                        continue;
+                    }
+
+                    $relations[$with][$row->attr[$localKey]] = $row->attr[$localKey];
+                }
+
+                if ($relations) {
+                    foreach ($relations as $relation) {
+                        $relationData = $model::query()->whereIn($foreignKey, $relation)->get();
+
+                        array_walk($rows, static function ($row) use ($relationData, $k, $v) {
+                            [, $localKey, $foreignKey, $relateType] = $v;
+
+                            $neededObject = new Collection(
+                                array_filter(
+                                    $relationData->toArray(),
+                                    static function ($e) use ($localKey, $foreignKey, $row) {
+                                        return $e->$foreignKey === $row->$localKey;
+                                    }
+                                )
+                            );
+
+                            $row->relations[$k] = $relateType === 'hasOne' ? $neededObject->first() : $neededObject;
+                        });
+                    }
+                }
+            }
+        }
+
         return $rows;
+    }
+
+    /**
+     * Eager loading
+     *
+     * @param string|array $relations
+     *
+     * @return $this
+     */
+    public function with(string|array $relations): static
+    {
+        $relations = (array) $relations;
+
+        foreach ($relations as $relation) {
+            if (! method_exists($this, $relation)) {
+                throw new RuntimeException(sprintf('Call to undefined relationship %s on model %s', $relation, $this::class));
+            }
+
+            $this->with[] = $relation;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Has one relation
+     *
+     * @param string $model
+     * @param string $localKey
+     * @param string $foreignKey
+     *
+     * @return mixed
+     */
+    public function hasOne(string $model, string $localKey, string $foreignKey = 'id'): mixed
+    {
+        if (! $this->attr) {
+            return [$model, $localKey, $foreignKey, __FUNCTION__];
+        }
+
+        $model = new $model();
+        $k = $model->getTable() . '.' .  $localKey . '.' . $foreignKey;
+
+        return $this->relations[$k] ?? $model->query()->where($foreignKey, $this->$localKey)->first();
+    }
+
+    /**
+     * Has many relation
+     *
+     * @param string $model
+     * @param string $localKey
+     * @param string $foreignKey
+     *
+     * @return mixed
+     */
+    public function hasMany(string $model, string $localKey, string $foreignKey = 'id'): mixed
+    {
+        if (! $this->attr) {
+            return [$model, $localKey, $foreignKey, __FUNCTION__];
+        }
+
+        $model = new $model();
+        $k = $model->getTable() . '.' .  $localKey . '.' . $foreignKey;
+
+        return $this->relations[$k] ?? $model->query()->where($foreignKey, $this->$localKey)->get();
     }
 
     /**

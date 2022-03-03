@@ -25,7 +25,9 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      */
     public function __construct(
         protected array $elements = [],
-    ) {}
+    ) {
+        $this->elements = array_values($elements);
+    }
 
     /**
      * Creates a new instance from the specified elements.
