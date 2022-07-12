@@ -21,9 +21,9 @@ class Migration
     protected mixed $after = false;
     protected SplFileObject $file;
 
-    public function __construct(public Model $model)
+    public function __construct(public Builder $builder)
     {
-        $this->file = $model->open()->file();
+        $this->file = $builder->open()->file();
     }
 
     /**
@@ -36,7 +36,7 @@ class Migration
     public function column(string $column): static
     {
         $this->column = $column;
-        $this->position = array_search($column, $this->model->headers(), true);
+        $this->position = array_search($column, $this->builder->headers(), true);
 
         return $this;
     }
@@ -64,7 +64,7 @@ class Migration
      */
     public function after(string $column): static
     {
-        $this->after = array_search($column, $this->model->headers(), true);
+        $this->after = array_search($column, $this->builder->headers(), true);
 
         return $this;
     }
@@ -240,6 +240,6 @@ class Migration
      */
     private function existsColumn(string $column): bool
     {
-        return in_array($column, $this->model->headers(), true);
+        return in_array($column, $this->builder->headers(), true);
     }
 }

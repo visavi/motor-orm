@@ -2,7 +2,7 @@
 
 namespace MotorORM\Tests\Models;
 
-use MotorORM\Model;
+use MotorORM\Builder;
 
 /**
  * Class Test3
@@ -11,7 +11,7 @@ use MotorORM\Model;
  * @property string $name
  * @property string $value
  */
-class Test3 extends Model
+class Test3 extends Builder
 {
     public string $filePath = __DIR__ . '/../../tests/data/test3.csv';
 }

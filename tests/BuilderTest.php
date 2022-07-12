@@ -9,9 +9,9 @@ use MotorOrm\Tests\Models\Test2;
 use MotorOrm\Tests\Models\Test3;
 
 /**
- * @coversDefaultClass \MotorORM\Model
+ * @coversDefaultClass \MotorORM\Builder
  */
-final class ModelTest extends TestCase
+final class BuilderTest extends TestCase
 {
     /**
      * Find by primary key

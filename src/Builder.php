@@ -17,14 +17,14 @@ use stdClass;
 use UnexpectedValueException;
 
 /**
- * Model file ORM
+ * Builder file ORM
  *
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
- * @version 2.0
+ * @version 3.0
  */
-abstract class Model
+abstract class Builder
 {
     public const SORT_ASC = 'asc';
     public const SORT_DESC = 'desc';
@@ -47,6 +47,7 @@ abstract class Model
     protected ?string $paginateView = null;
     protected array $with = [];
     protected array $relations = [];
+    protected array $where = [];
 
     /**
      * Begin querying the model.
@@ -138,28 +139,71 @@ abstract class Model
     }
 
     /**
-     * Where
+     * Apply condition
      *
-     * @param string $field
-     * @param mixed $operator
-     * @param mixed $value
-     *
-     * @return $this
+     * @return void
      */
-    public function where(string $field, mixed $operator, mixed $value = null): static
+    public function filtration(): void
     {
-        $key   = $this->getKeyByField($field);
-        $value = (string) $value;
-
-        if (func_num_args() === 2) {
-            $value    = (string) $operator;
-            $operator = '=';
+        if (! $this->where) {
+            return;
         }
 
         $this->iterator = new CallbackFilterIterator(
             $this->iterator,
-            fn ($current) => $this->condition($current[$key], $operator, $value)
+            fn ($current) => $this->checker($this->where, $current)
+        /*function($current) {
+            return $this->checker($this->where, $current);
+        }*/
         );
+    }
+
+    /**
+     * Where
+     *
+     * @param Closure|string $field
+     * @param mixed          $condition
+     * @param mixed          $value
+     * @param string         $boolean
+     *
+     * @return $this
+     */
+    public function where(Closure|string $field, mixed $condition = null, mixed $value = null, $boolean = 'and'): static
+    {
+        if ($field instanceof Closure) {
+            $field($builder = self::query());
+
+            $this->where[$boolean][] = $builder->where;
+        } else {
+            $this->where[$boolean][] = [
+                'field'     => $field,
+                'value'     => $value,
+                'condition' => $condition,
+            ];
+        }
+
+        return $this;
+    }
+
+    /**
+     * Or where
+     *
+     * @param Closure|string $field
+     * @param mixed|null     $condition
+     * @param mixed|null     $value
+     *
+     * @return $this
+     */
+    public function orWhere(Closure|string $field, mixed $condition = null, mixed $value = null): static
+    {
+        if ($field instanceof Closure) {
+            $field($builder = self::query());
+
+            $this->where['or'][] = $builder->where;
+
+        } else {
+            $this->where($field, $condition, $value, 'or');
+        }
 
         return $this;
     }
@@ -264,12 +308,12 @@ abstract class Model
      */
     public function first(): ?static
     {
-        $this->sorting();
-        $this->iterator = new LimitIterator($this->iterator, 0, 1);
-
         if (! $this->count()) {
             return null;
         }
+
+        $this->sorting();
+        $this->iterator = new LimitIterator($this->iterator, 0, 1);
 
         $this->iterator->rewind();
         $this->attr = $this->mapper($this->iterator->current());
@@ -284,6 +328,7 @@ abstract class Model
      */
     public function get(): Collection
     {
+        $this->filtration();
         $this->sorting();
         $this->iterator = new LimitIterator($this->iterator, $this->offset, $this->limit);
 
@@ -315,6 +360,8 @@ abstract class Model
      */
     public function count(): int
     {
+        $this->filtration();
+
         return iterator_count($this->iterator);
     }
 
@@ -607,9 +654,9 @@ abstract class Model
             $relations = [];
             foreach ($this->with as $with) {
                 $v = $this->$with();
-                /** @var Model $model */
-                [$model, $localKey, $foreignKey] = $v;
-                $k = (new $model())->getTable() . '.' .  $localKey . '.' . $foreignKey;
+                /** @var Builder $builder */
+                [$builder, $localKey, $foreignKey] = $v;
+                $k = (new $builder())->getTable() . '.' .  $localKey . '.' . $foreignKey;
 
                 foreach ($rows as $row) {
                     if (! $row->attr[$localKey]) {
@@ -621,7 +668,7 @@ abstract class Model
 
                 if ($relations) {
                     foreach ($relations as $relation) {
-                        $relationData = $model::query()->whereIn($foreignKey, $relation)->get();
+                        $relationData = $builder::query()->whereIn($foreignKey, $relation)->get();
 
                         array_walk($rows, static function ($row) use ($relationData, $k, $v) {
                             [, $localKey, $foreignKey, $relateType] = $v;
@@ -741,17 +788,23 @@ abstract class Model
     }
 
     /**
-     * Operator condition
+     * Condition operator
      *
-     * @param string $field
-     * @param string $operator
-     * @param string $value
+     * @param mixed $field
+     * @param mixed $condition
+     * @param mixed $value
      *
      * @return bool
      */
-    private function condition(string $field, string $operator, string $value): bool
+    private function condition(mixed $field, mixed $condition, mixed $value): bool
     {
-        return match ($operator) {
+        //$value = (string) $value;
+        if (func_num_args() === 2) {
+            $value    = $condition;
+            $condition = '=';
+        }
+
+        return match ($condition) {
             '!=', '<>' => $field !== $value,
             '>=' => $field >= $value,
             '<=' => $field <= $value,
@@ -759,6 +812,44 @@ abstract class Model
             '<' => $field < $value,
             default => $field === $value,
         };
+    }
+
+    /**
+     * Checker condition
+     *
+     * @param array $wheres
+     * @param array $args
+     * @param mixed $operator
+     * @return bool
+     */
+    private function checker(array $wheres, array $args, mixed $operator = 'or')
+    {
+        $valids = [];
+
+        foreach ($wheres as $key => $where) {
+            if (isset($where['field'])) {
+                $valids[] = $this->condition($this->mapper($args)[$where['field']], $where['condition'], $where['value']);
+            } else {
+                $valids[] = $this->checker($where, $args, $key);
+            }
+        }
+
+        if ($operator === 'or') {
+            foreach ($valids as $valid) {
+                if ($valid === true) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        foreach ($valids as $valid) {
+            if ($valid === false) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

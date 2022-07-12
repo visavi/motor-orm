@@ -34,12 +34,13 @@
 В самих моделях могут быть реализованы дополнительные методы
 
 ### Примеры
+
 ```php
 
 # Create class
-use MotorORM\Model;
+use MotorORM\Builder;
 
-class TestModel extends Model
+class TestModel extends Builder
 {
     public string $filePath = __DIR__ . '/test.csv';
 }
@@ -64,6 +65,17 @@ TestModel::query()->whereIn('id', [1, 3, 4, 7])->get();
 
 # Get by condition not in
 TestModel::query()->whereNotIn('id', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])->get();
+
+# Get records by multiple conditions and pagination
+TestModel::query()
+    ->where(function(Builder $builder) {
+        $builder->where('name', 'Миша');
+        $builder->orWhere(function(Builder $builder) {
+            $builder->where('name', 'Петя');
+            $builder->where('title', '<>', '');
+        });
+    })
+    ->paginate(10);
 
 # Get count
 TestModel::query()->where('time', '>', 1231231234)->count();
