@@ -152,9 +152,6 @@ abstract class Builder
         $this->iterator = new CallbackFilterIterator(
             $this->iterator,
             fn ($current) => $this->checker($this->where, $current)
-        /*function($current) {
-            return $this->checker($this->where, $current);
-        }*/
         );
     }
 
@@ -164,21 +161,26 @@ abstract class Builder
      * @param Closure|string $field
      * @param mixed          $condition
      * @param mixed          $value
-     * @param string         $boolean
+     * @param string         $operator
      *
      * @return $this
      */
-    public function where(Closure|string $field, mixed $condition = null, mixed $value = null, $boolean = 'and'): static
+    public function where(Closure|string $field, mixed $condition = null, mixed $value = null, string $operator = 'and'): static
     {
         if ($field instanceof Closure) {
             $field($builder = self::query());
 
-            $this->where[$boolean][] = $builder->where;
+            $this->where[$operator][] = $builder->where;
         } else {
-            $this->where[$boolean][] = [
+            if (func_num_args() === 2) {
+                $value     = $condition;
+                $condition = '=';
+            }
+
+            $this->where[$operator][] = [
                 'field'     => $field,
-                'value'     => $value,
                 'condition' => $condition,
+                'value'     => (string) $value,
             ];
         }
 
@@ -200,8 +202,12 @@ abstract class Builder
             $field($builder = self::query());
 
             $this->where['or'][] = $builder->where;
-
         } else {
+            if (func_num_args() === 2) {
+                $value     = $condition;
+                $condition = '=';
+            }
+
             $this->where($field, $condition, $value, 'or');
         }
 
@@ -312,11 +318,12 @@ abstract class Builder
             return null;
         }
 
+        $this->filtration();
         $this->sorting();
         $this->iterator = new LimitIterator($this->iterator, 0, 1);
 
         $this->iterator->rewind();
-        $this->attr = $this->mapper($this->iterator->current());
+        $this->attr = array_map([$this, 'cast'], $this->mapper($this->iterator->current()));
 
         return $this;
     }
@@ -332,7 +339,7 @@ abstract class Builder
         $this->sorting();
         $this->iterator = new LimitIterator($this->iterator, $this->offset, $this->limit);
 
-        return new Collection($this->mapper($this->iterator));
+        return new Collection(array_map([$this, 'cast'], $this->mapper($this->iterator)));
     }
 
     /**
@@ -347,10 +354,11 @@ abstract class Builder
         $paginator = new Pagination($this->paginateView, $this->paginateName);
         $paginator = $paginator->create($this->count(), $limit);
 
+        $this->filtration();
         $this->sorting();
         $this->iterator = new LimitIterator($this->iterator, $paginator->offset, $paginator->limit);
 
-        return new CollectionPaginate($this->mapper($this->iterator), $paginator);
+        return new CollectionPaginate(array_map([$this, 'cast'], $this->mapper($this->iterator)), $paginator);
     }
 
     /**
@@ -611,20 +619,28 @@ abstract class Builder
                 $record = array_slice(array_pad($record, $fieldCount, null), 0, $fieldCount);
             }
 
-            $record = array_map(static function ($value) {
-                if (is_numeric($value)) {
-                    return ! str_contains($value, '.') ? (int) $value : (float) $value;
-                }
-
-                if ($value === '') {
-                    return null;
-                }
-
-                return $value;
-            }, $record);
-
             return array_combine($this->headers, $record);
         };
+    }
+
+    /**
+     * Cast field
+     *
+     * @param string $value
+     *
+     * @return mixed
+     */
+    private function cast(string $value): mixed
+    {
+        if (is_numeric($value)) {
+            return ! str_contains($value, '.') ? (int) $value : (float) $value;
+        }
+
+        if ($value === '') {
+            return null;
+        }
+
+        return $value;
     }
 
     /**
@@ -791,19 +807,13 @@ abstract class Builder
      * Condition operator
      *
      * @param mixed $field
-     * @param mixed $condition
+     * @param string $condition
      * @param mixed $value
      *
      * @return bool
      */
-    private function condition(mixed $field, mixed $condition, mixed $value): bool
+    private function condition(mixed $field, string $condition, mixed $value = null): bool
     {
-        //$value = (string) $value;
-        if (func_num_args() === 2) {
-            $value    = $condition;
-            $condition = '=';
-        }
-
         return match ($condition) {
             '!=', '<>' => $field !== $value,
             '>=' => $field >= $value,
@@ -828,7 +838,8 @@ abstract class Builder
 
         foreach ($wheres as $key => $where) {
             if (isset($where['field'])) {
-                $valids[] = $this->condition($this->mapper($args)[$where['field']], $where['condition'], $where['value']);
+                $field = $this->mapper($args)[$where['field']];
+                $valids[] = $this->condition($field, $where['condition'], $where['value']);
             } else {
                 $valids[] = $this->checker($where, $args, $key);
             }
