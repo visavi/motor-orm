@@ -202,18 +202,19 @@ abstract class Builder
      *
      * @param string $field
      * @param array  $values
+     * @param string $operator
      *
      * @return $this
      */
-    public function whereIn(string $field, array $values): static
+    public function whereIn(string $field, array $values, string $operator = 'and'): static
     {
-        $key    = $this->getKeyByField($field);
         $values = array_flip($values);
 
-        $this->iterator = new CallbackFilterIterator(
-            $this->iterator,
-            fn ($current) => isset($values[$current[$key]])
-        );
+        $this->where[$operator][] = [
+            'field'     => $field,
+            'condition' => 'in',
+            'value'     => $values
+        ];
 
         return $this;
     }
@@ -223,18 +224,19 @@ abstract class Builder
      *
      * @param string $field
      * @param array  $values
+     * @param string $operator
      *
      * @return $this
      */
-    public function whereNotIn(string $field, array $values): static
+    public function whereNotIn(string $field, array $values, string $operator = 'and'): static
     {
-        $key    = $this->getKeyByField($field);
         $values = array_flip($values);
 
-        $this->iterator = new CallbackFilterIterator(
-            $this->iterator,
-            fn ($current) => ! isset($values[$current[$key]])
-        );
+        $this->where[$operator][] = [
+            'field'     => $field,
+            'condition' => 'not_in',
+            'value'     => $values
+        ];
 
         return $this;
     }
@@ -822,6 +824,8 @@ abstract class Builder
             '<=' => $field <= $value,
             '>' => $field > $value,
             '<' => $field < $value,
+            'in' => isset($value[$field]),
+            'not_in' => ! isset($value[$field]),
             default => $field === $value,
         };
     }
