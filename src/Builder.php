@@ -139,23 +139,6 @@ abstract class Builder
     }
 
     /**
-     * Apply condition
-     *
-     * @return void
-     */
-    public function filtration(): void
-    {
-        if (! $this->where) {
-            return;
-        }
-
-        $this->iterator = new CallbackFilterIterator(
-            $this->iterator,
-            fn ($current) => $this->checker($this->where, $current)
-        );
-    }
-
-    /**
      * Where
      *
      * @param Closure|string $field
@@ -318,12 +301,12 @@ abstract class Builder
             return null;
         }
 
-        $this->filtration();
+        $this->filtering();
         $this->sorting();
         $this->iterator = new LimitIterator($this->iterator, 0, 1);
 
         $this->iterator->rewind();
-        $this->attr = array_map([$this, 'cast'], $this->mapper($this->iterator->current()));
+        $this->attr = $this->mapper($this->iterator->current());
 
         return $this;
     }
@@ -335,11 +318,11 @@ abstract class Builder
      */
     public function get(): Collection
     {
-        $this->filtration();
+        $this->filtering();
         $this->sorting();
         $this->iterator = new LimitIterator($this->iterator, $this->offset, $this->limit);
 
-        return new Collection(array_map([$this, 'cast'], $this->mapper($this->iterator)));
+        return new Collection($this->mapper($this->iterator));
     }
 
     /**
@@ -354,11 +337,11 @@ abstract class Builder
         $paginator = new Pagination($this->paginateView, $this->paginateName);
         $paginator = $paginator->create($this->count(), $limit);
 
-        $this->filtration();
+        $this->filtering();
         $this->sorting();
         $this->iterator = new LimitIterator($this->iterator, $paginator->offset, $paginator->limit);
 
-        return new CollectionPaginate(array_map([$this, 'cast'], $this->mapper($this->iterator)), $paginator);
+        return new CollectionPaginate($this->mapper($this->iterator), $paginator);
     }
 
     /**
@@ -368,7 +351,7 @@ abstract class Builder
      */
     public function count(): int
     {
-        $this->filtration();
+        $this->filtering();
 
         return iterator_count($this->iterator);
     }
@@ -619,28 +602,10 @@ abstract class Builder
                 $record = array_slice(array_pad($record, $fieldCount, null), 0, $fieldCount);
             }
 
+            $record = array_map([$this, 'cast'], $record);
+
             return array_combine($this->headers, $record);
         };
-    }
-
-    /**
-     * Cast field
-     *
-     * @param string $value
-     *
-     * @return mixed
-     */
-    private function cast(string $value): mixed
-    {
-        if (is_numeric($value)) {
-            return ! str_contains($value, '.') ? (int) $value : (float) $value;
-        }
-
-        if ($value === '') {
-            return null;
-        }
-
-        return $value;
     }
 
     /**
@@ -709,6 +674,26 @@ abstract class Builder
     }
 
     /**
+     * Cast field
+     *
+     * @param string $value
+     *
+     * @return mixed
+     */
+    protected function cast(string $value): mixed
+    {
+        if (is_numeric($value)) {
+            return ! str_contains($value, '.') ? (int) $value : (float) $value;
+        }
+
+        if ($value === '') {
+            return null;
+        }
+
+        return $value;
+    }
+
+    /**
      * Eager loading
      *
      * @param string|array $relations
@@ -773,6 +758,23 @@ abstract class Builder
     }
 
     /**
+     * Apply condition
+     *
+     * @return void
+     */
+    private function filtering(): void
+    {
+        if (! $this->where) {
+            return;
+        }
+
+        $this->iterator = new CallbackFilterIterator(
+            $this->iterator,
+            fn ($current) => $this->checker($this->where, $current)
+        );
+    }
+
+    /**
      * Sorting
      *
      * @return void
@@ -791,9 +793,9 @@ abstract class Builder
                 foreach ($this->orders as $field => $sort) {
                     if ($retVal === 0) {
                         if ($sort === self::SORT_ASC) {
-                            $retVal = $this->mapper($a)[$field] <=> $this->mapper($b)[$field];
+                            $retVal = $a[$this->getKeyByField($field)] <=> $b[$this->getKeyByField($field)];
                         } else {
-                            $retVal = $this->mapper($b)[$field] <=> $this->mapper($a)[$field];
+                            $retVal = $b[$this->getKeyByField($field)] <=> $a[$this->getKeyByField($field)];
                         }
                     }
                 }
@@ -838,7 +840,7 @@ abstract class Builder
 
         foreach ($wheres as $key => $where) {
             if (isset($where['field'])) {
-                $field = $this->mapper($args)[$where['field']];
+                $field = $args[$this->getKeyByField($where['field'])];
                 $valids[] = $this->condition($field, $where['condition'], $where['value']);
             } else {
                 $valids[] = $this->checker($where, $args, $key);
