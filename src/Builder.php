@@ -450,48 +450,6 @@ abstract class Builder
         return $values[$this->primary];
     }
 
-
-    /**
-     * Process
-     *
-     * @param Closure $closure
-     *
-     * @return void
-     */
-    private function process(Closure $closure): void
-    {
-        if (! $this->file->flock(LOCK_EX)) {
-            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->file->getFilename()));
-        }
-
-        $this->file->fseek(0);
-
-        $temp = new SplTempFileObject(-1);
-        $temp->setFlags(
-            SplFileObject::READ_AHEAD |
-            SplFileObject::SKIP_EMPTY |
-            SplFileObject::READ_CSV
-        );
-
-        while(! $this->file->eof()) {
-            $temp->fwrite($this->file->fread(4096));
-        }
-
-        $temp->rewind();
-        $this->file->ftruncate(0);
-        $this->file->fseek(0);
-
-        while ($temp->valid()) {
-            $current = $temp->current();
-
-            $closure($current);
-            $temp->next();
-        }
-
-        $this->file->flock(LOCK_UN);
-    }
-
-
     /**
      * Update records
      *
@@ -508,6 +466,7 @@ abstract class Builder
         }
 
         $affectedRows = 0;
+        $this->filtering();
         $ids = array_column($this->mapper($this->iterator), $this->primary, $this->primary);
 
         $this->process(function (&$current) use ($ids, $values, &$affectedRows) {
@@ -531,6 +490,7 @@ abstract class Builder
     public function delete(): int
     {
         $affectedRows = 0;
+        $this->filtering();
         $ids = array_column($this->mapper($this->iterator), $this->primary, $this->primary);
 
         $this->process(function (&$current) use ($ids, &$affectedRows) {
@@ -563,31 +523,45 @@ abstract class Builder
     }
 
     /**
-     * @param string $field
+     * Eager loading
      *
-     * @return null
+     * @param string|array $relations
+     *
+     * @return $this
      */
-    public function __get(string $field){
-        return $this->attr[$field] ?? null;
+    public function with(string|array $relations): static
+    {
+        $relations = (array) $relations;
+
+        foreach ($relations as $relation) {
+            if (! method_exists($this, $relation)) {
+                throw new RuntimeException(sprintf('Call to undefined relationship %s on model %s', $relation, $this::class));
+            }
+
+            $this->with[] = $relation;
+        }
+
+        return $this;
     }
 
     /**
-     * @param string $field
-     * @param mixed  $value
-     */
-    public function __set(string $field, mixed $value): void
-    {
-        $this->attr[$field] = $value;
-    }
-
-    /**
-     * @param string $field
+     * Has one relation
      *
-     * @return bool
+     * @param string $model
+     * @param string $localKey
+     * @param string $foreignKey
+     *
+     * @return mixed
      */
-    public function __isset(string $field)
+    public function relation(string $model, string $localKey, string $foreignKey = 'id'): mixed
     {
-        return isset($this->attr[$field]);
+        $model = new $model();
+
+        // $this->attr[__FUNCTION__] = $model->query()->where($foreignKey, $this->$localKey);
+
+        return $model->query()->where($foreignKey, $this->$localKey);
+
+        //return $this->relations[$k] ?? $model->query()->where($foreignKey, $this->$localKey)->first();
     }
 
     /**
@@ -693,70 +667,6 @@ abstract class Builder
         }
 
         return $value;
-    }
-
-    /**
-     * Eager loading
-     *
-     * @param string|array $relations
-     *
-     * @return $this
-     */
-    public function with(string|array $relations): static
-    {
-        $relations = (array) $relations;
-
-        foreach ($relations as $relation) {
-            if (! method_exists($this, $relation)) {
-                throw new RuntimeException(sprintf('Call to undefined relationship %s on model %s', $relation, $this::class));
-            }
-
-            $this->with[] = $relation;
-        }
-
-        return $this;
-    }
-
-    /**
-     * Has one relation
-     *
-     * @param string $model
-     * @param string $localKey
-     * @param string $foreignKey
-     *
-     * @return mixed
-     */
-    public function hasOne(string $model, string $localKey, string $foreignKey = 'id'): mixed
-    {
-        if (! $this->attr) {
-            return [$model, $localKey, $foreignKey, __FUNCTION__];
-        }
-
-        $model = new $model();
-        $k = $model->getTable() . '.' .  $localKey . '.' . $foreignKey;
-
-        return $this->relations[$k] ?? $model->query()->where($foreignKey, $this->$localKey)->first();
-    }
-
-    /**
-     * Has many relation
-     *
-     * @param string $model
-     * @param string $localKey
-     * @param string $foreignKey
-     *
-     * @return mixed
-     */
-    public function hasMany(string $model, string $localKey, string $foreignKey = 'id'): mixed
-    {
-        if (! $this->attr) {
-            return [$model, $localKey, $foreignKey, __FUNCTION__];
-        }
-
-        $model = new $model();
-        $k = $model->getTable() . '.' .  $localKey . '.' . $foreignKey;
-
-        return $this->relations[$k] ?? $model->query()->where($foreignKey, $this->$localKey)->get();
     }
 
     /**
@@ -885,6 +795,75 @@ abstract class Builder
         }
 
         return $key;
+    }
+
+    /**
+     * Process
+     *
+     * @param Closure $closure
+     *
+     * @return void
+     */
+    private function process(Closure $closure): void
+    {
+        if (! $this->file->flock(LOCK_EX)) {
+            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->file->getFilename()));
+        }
+
+        $this->file->fseek(0);
+
+        $temp = new SplTempFileObject(-1);
+        $temp->setFlags(
+            SplFileObject::READ_AHEAD |
+            SplFileObject::SKIP_EMPTY |
+            SplFileObject::READ_CSV
+        );
+
+        while(! $this->file->eof()) {
+            $temp->fwrite($this->file->fread(4096));
+        }
+
+        $temp->rewind();
+        $this->file->ftruncate(0);
+        $this->file->fseek(0);
+
+        while ($temp->valid()) {
+            $current = $temp->current();
+
+            $closure($current);
+            $temp->next();
+        }
+
+        $this->file->flock(LOCK_UN);
+    }
+
+    /**
+     * @param string $field
+     *
+     * @return null
+     */
+    public function __get(string $field)
+    {
+        return $this->attr[$field] ?? null;
+    }
+
+    /**
+     * @param string $field
+     * @param mixed  $value
+     */
+    public function __set(string $field, mixed $value): void
+    {
+        $this->attr[$field] = $value;
+    }
+
+    /**
+     * @param string $field
+     *
+     * @return bool
+     */
+    public function __isset(string $field)
+    {
+        return isset($this->attr[$field]);
     }
 
     /**
