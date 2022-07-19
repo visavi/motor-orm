@@ -728,6 +728,22 @@ abstract class Builder
      */
     private function condition(mixed $field, string $condition, mixed $value = null): bool
     {
+        $like = static function(mixed $field, mixed $value) {
+            if ($value[0] === '%' && $value[-1] === '%') {
+                return str_contains($field, trim($value, '%'));
+            }
+
+            if ($value[0] === '%') {
+                return str_starts_with($field, trim($value, '%'));
+            }
+
+            if ($value[-1] === '%') {
+                return str_ends_with($field, trim($value, '%'));
+            }
+
+            return str_contains($field, $value);
+        };
+
         return match ($condition) {
             '!=', '<>' => $field !== $value,
             '>=' => $field >= $value,
@@ -736,6 +752,8 @@ abstract class Builder
             '<' => $field < $value,
             'in' => isset($value[$field]),
             'not_in' => ! isset($value[$field]),
+            'like' => $like($field, $value),
+            'not_like' => ! $like($field, $value),
             default => $field === $value,
         };
     }
@@ -746,9 +764,10 @@ abstract class Builder
      * @param array $wheres
      * @param array $args
      * @param mixed $operator
+     *
      * @return bool
      */
-    private function checker(array $wheres, array $args, mixed $operator = 'or')
+    private function checker(array $wheres, array $args, mixed $operator = 'or'): bool
     {
         $valids = [];
 
