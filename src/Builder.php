@@ -45,8 +45,9 @@ abstract class Builder
     protected array $attr = [];
     protected ?string $paginateName = null;
     protected ?string $paginateView = null;
-    protected array $with = [];
+    protected ?string $relate = null;
     protected array $relations = [];
+    protected array $with = [];
     protected array $where = [];
 
     /**
@@ -105,18 +106,6 @@ abstract class Builder
     }
 
     /**
-     * Reverse iterator
-     *
-     * @return $this
-     */
-    public function reverse(): static
-    {
-        $this->iterator = new ArrayIterator(array_reverse(iterator_to_array($this->iterator)));
-
-        return $this;
-    }
-
-    /**
      * Get headers
      *
      * @return array
@@ -148,8 +137,12 @@ abstract class Builder
      *
      * @return $this
      */
-    public function where(Closure|string $field, mixed $condition = null, mixed $value = null, string $operator = 'and'): static
-    {
+    public function where(
+        Closure|string $field,
+        mixed $condition = null,
+        mixed $value = null,
+        string $operator = 'and'
+    ): static {
         if ($field instanceof Closure) {
             $field($builder = self::query());
 
@@ -407,9 +400,9 @@ abstract class Builder
      *
      * @param array $values
      *
-     * @return int|string last insert id
+     * @return $this
      */
-    public function insert(array $values): int|string
+    public function insert(array $values): static
     {
         $fields   = array_fill_keys($this->headers, '');
         $diffKeys = array_diff_key($values, $fields);
@@ -446,8 +439,9 @@ abstract class Builder
         $this->file->fputcsv(array_replace($fields, $values));
         $this->file->flock(LOCK_UN);
 
+        $this->attr = $values;
 
-        return $values[$this->primary];
+        return $this;
     }
 
     /**
@@ -553,16 +547,39 @@ abstract class Builder
      *
      * @return mixed
      */
-    public function relation(string $model, string $localKey, string $foreignKey = 'id'): mixed
+    public function hasOne(string $model, string $localKey, string $foreignKey = 'id'): mixed
     {
         $model = new $model();
 
-        // $this->attr[__FUNCTION__] = $model->query()->where($foreignKey, $this->$localKey);
-
-        return $model->query()->where($foreignKey, $this->$localKey);
-
-        //return $this->relations[$k] ?? $model->query()->where($foreignKey, $this->$localKey)->first();
+        return $model->query()->setRelate('hasOne')->where($foreignKey, $this->$localKey);
     }
+
+    /**
+     * Has many relation
+     *
+     * @param string $model
+     * @param string $localKey
+     * @param string $foreignKey
+     *
+     * @return mixed
+     */
+    public function hasMany(string $model, string $localKey, string $foreignKey = 'id'): mixed
+    {
+        $model = new $model();
+
+        return $model->query()->setRelate('hasMany')->where($foreignKey, $this->$localKey);
+
+
+        /*if (! $this->attr) {
+            return [$model, $localKey, $foreignKey, __FUNCTION__];
+        }
+
+        $model = new $model();
+        $k = $model->getTable() . '.' .  $localKey . '.' . $foreignKey;
+
+        return $this->relations[$k] ?? $model->query()->where($foreignKey, $this->$localKey)->get();*/
+    }
+
 
     /**
      * Combine fields
@@ -703,11 +720,13 @@ abstract class Builder
             function($a, $b) {
                 $retVal = 0;
                 foreach ($this->orders as $field => $sort) {
+                    $key = $this->getKeyByField($field);
+
                     if ($retVal === 0) {
                         if ($sort === self::SORT_ASC) {
-                            $retVal = $a[$this->getKeyByField($field)] <=> $b[$this->getKeyByField($field)];
+                            $retVal = $a[$key] <=> $b[$key];
                         } else {
-                            $retVal = $b[$this->getKeyByField($field)] <=> $a[$this->getKeyByField($field)];
+                            $retVal = $b[$key] <=> $a[$key];
                         }
                     }
                 }
@@ -857,12 +876,34 @@ abstract class Builder
     }
 
     /**
+     * Set relate
+     *
+     * @param string $relate
+     *
+     * @return $this
+     */
+    private function setRelate(string $relate): static
+    {
+        $this->relate = $relate;
+
+        return $this;
+    }
+
+    /**
      * @param string $field
      *
      * @return null
      */
     public function __get(string $field)
     {
+        if (method_exists($this, $field)) {
+            $class = get_class($this->$field());
+
+            return $this->$field()->relate === 'hasOne'
+                ? $this->$field()->first() ?? new $class()
+                : $this->$field()->get();
+        }
+
         return $this->attr[$field] ?? null;
     }
 

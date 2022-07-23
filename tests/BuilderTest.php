@@ -58,7 +58,7 @@ final class BuilderTest extends TestCase
      */
     public function testWhereLimitLast(): void
     {
-        $find = Test::query()->where('name', 'Миша')->reverse()->first();
+        $find = Test::query()->where('name', 'Миша')->orderByDesc('id')->first();
 
         $this->assertIsObject($find);
         $this->assertObjectHasAttribute('attr', $find);
@@ -200,51 +200,6 @@ final class BuilderTest extends TestCase
     }
 
     /**
-     * Get lines reverse (last 10 lines reversed)
-     *
-     * @covers ::get()
-     */
-    public function testOffsetLimitReverseGet(): void
-    {
-        $find = Test::query()->reverse()->offset(0)->limit(10)->get();
-
-        $this->assertCount(10, $find);
-        $this->assertEquals('Заголовок20', $find[0]->title);
-        $this->assertEquals('Заголовок14', $find[6]->title);
-        $this->assertEquals('Заголовок11', $find[9]->title);
-    }
-
-    /**
-     * Get lines reverse (last 10 lines reversed)
-     *
-     * @covers ::get()
-     */
-    public function testOffsetLimitReverse2Get(): void
-    {
-        $find = Test::query()->offset(0)->limit(10)->reverse()->get();
-
-        $this->assertCount(10, $find);
-        $this->assertEquals('Заголовок20', $find[0]->title);
-        $this->assertEquals('Заголовок14', $find[6]->title);
-        $this->assertEquals('Заголовок11', $find[9]->title);
-    }
-
-    /**
-     * Get from condition limit and reverse
-     *
-     * @covers ::get()
-     */
-    public function testWhereLimitReverse(): void
-    {
-        $find = Test::query()->where('name', 'Миша')->limit(10)->reverse()->get();
-
-        $this->assertCount(3, $find);
-        $this->assertEquals('Заголовок18', $find[0]->title);
-        $this->assertEquals('Заголовок11', $find[1]->title);
-        $this->assertEquals('Заголовок10', $find[2]->title);
-    }
-
-    /**
      * Get headers
      *
      * @covers ::headers()
@@ -322,7 +277,7 @@ final class BuilderTest extends TestCase
      */
     public function testLast3(): void
     {
-        $find = Test::query()->reverse()->limit(3)->get();
+        $find = Test::query()->orderByDesc('id')->limit(3)->get();
 
         $this->assertCount(3, $find);
         $this->assertObjectHasAttribute('attr', $find[0]);
@@ -402,14 +357,14 @@ final class BuilderTest extends TestCase
      */
     public function testInsert(): void
     {
-        $lastInsertId = Test3::query()->insert([
+        $data = Test3::query()->insert([
            'name' => 'name1',
            'value' => 555,
         ]);
 
-        $find = Test3::query()->reverse()->first();
+        $find = Test3::query()->orderByDesc('id')->first();
 
-        $this->assertEquals($find->id, $lastInsertId);
+        $this->assertEquals($find->id, $data->id);
         $this->assertObjectHasAttribute('attr', $find);
         $this->assertEquals('name1', $find->name);
         $this->assertEquals('555', $find->value);
