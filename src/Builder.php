@@ -45,8 +45,8 @@ abstract class Builder
     protected array $attr = [];
     protected ?string $paginateName = null;
     protected ?string $paginateView = null;
-    protected ?string $relate = null;
     protected array $relations = [];
+    protected array $relate = [];
     protected array $with = [];
     protected array $where = [];
 
@@ -551,7 +551,15 @@ abstract class Builder
     {
         $model = new $model();
 
-        return $model->query()->setRelate('hasOne')->where($foreignKey, $this->$localKey);
+        $relate = [
+            'type'       => 'hasOne',
+            'model'      => $model,
+            'localKey'   => $localKey,
+            'foreignKey' => $foreignKey,
+        ];
+
+
+        return $model->query()->setRelate($relate)->where($foreignKey, $this->$localKey);
     }
 
     /**
@@ -567,17 +575,14 @@ abstract class Builder
     {
         $model = new $model();
 
-        return $model->query()->setRelate('hasMany')->where($foreignKey, $this->$localKey);
+        $relate = [
+            'type'       => 'hasOne',
+            'model'      => $model,
+            'localKey'   => $localKey,
+            'foreignKey' => $foreignKey,
+        ];
 
-
-        /*if (! $this->attr) {
-            return [$model, $localKey, $foreignKey, __FUNCTION__];
-        }
-
-        $model = new $model();
-        $k = $model->getTable() . '.' .  $localKey . '.' . $foreignKey;
-
-        return $this->relations[$k] ?? $model->query()->where($foreignKey, $this->$localKey)->get();*/
+        return $model->query()->setRelate($relate)->where($foreignKey, $this->$localKey);
     }
 
 
@@ -627,39 +632,38 @@ abstract class Builder
         if ($this->with) {
             $relations = [];
             foreach ($this->with as $with) {
-                $v = $this->$with();
-                /** @var Builder $builder */
-                [$builder, $localKey, $foreignKey] = $v;
-                $k = (new $builder())->getTable() . '.' .  $localKey . '.' . $foreignKey;
 
                 foreach ($rows as $row) {
-                    if (! $row->attr[$localKey]) {
+                    $method = $row->$with();
+                    if (! $row->attr[$method->relate['localKey']]) {
                         continue;
                     }
 
-                    $relations[$with][$row->attr[$localKey]] = $row->attr[$localKey];
+                    $localId = $row->attr[$method->relate['localKey']];
+                    $relations[$with][$localId] = $localId;
                 }
 
-                if ($relations) {
-                    foreach ($relations as $relation) {
-                        $relationData = $builder::query()->whereIn($foreignKey, $relation)->get();
+                $relate = $this->$with()->relate;
+                $where = $this->$with()->where;
 
-                        array_walk($rows, static function ($row) use ($relationData, $k, $v) {
-                            [, $localKey, $foreignKey, $relateType] = $v;
+                $where['and'][0] = [
+                    'field'     => $relate['foreignKey'],
+                    'condition' => 'in',
+                    'value'     => $relations[$with],
+                ];
 
-                            $neededObject = new Collection(
-                                array_filter(
-                                    $relationData->toArray(),
-                                    static function ($e) use ($localKey, $foreignKey, $row) {
-                                        return $e->$foreignKey === $row->$localKey;
-                                    }
-                                )
-                            );
+                $relationData = $relate['model']->query()->setWhere($where)->get();
 
-                            $row->relations[$k] = $relateType === 'hasOne' ? $neededObject->first() : $neededObject;
-                        });
-                    }
+                $relationByKey = [];
+                foreach ($relationData as $data) {
+                    $foreignKey = $relate['foreignKey'];
+                    $relationByKey[$data->$foreignKey] = $data;
                 }
+
+                array_walk($rows, static function ($row) use ($relate, $relationByKey, $with) {
+                    $localKey = $relate['localKey'];
+                    $row->relations[$with] = $relationByKey[$row->$localKey] ?? null;
+                });
             }
         }
 
@@ -878,13 +882,27 @@ abstract class Builder
     /**
      * Set relate
      *
-     * @param string $relate
+     * @param array $relate
      *
      * @return $this
      */
-    private function setRelate(string $relate): static
+    private function setRelate(array $relate): static
     {
         $this->relate = $relate;
+
+        return $this;
+    }
+
+    /**
+     * Set where
+     *
+     * @param array $where
+     *
+     * @return $this
+     */
+    private function setWhere(array $where): static
+    {
+        $this->where = $where;
 
         return $this;
     }
@@ -899,7 +917,11 @@ abstract class Builder
         if (method_exists($this, $field)) {
             $class = get_class($this->$field());
 
-            return $this->$field()->relate === 'hasOne'
+            if ($this->relations[$field]) {
+                return $this->relations[$field];
+            }
+
+            return $this->$field()->relate['type'] === 'hasOne'
                 ? $this->$field()->first() ?? new $class()
                 : $this->$field()->get();
         }
