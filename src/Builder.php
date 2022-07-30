@@ -576,7 +576,7 @@ abstract class Builder
         $model = new $model();
 
         $relate = [
-            'type'       => 'hasOne',
+            'type'       => 'hasMany',
             'model'      => $model,
             'localKey'   => $localKey,
             'foreignKey' => $foreignKey,
@@ -584,7 +584,6 @@ abstract class Builder
 
         return $model->query()->setRelate($relate)->where($foreignKey, $this->$localKey);
     }
-
 
     /**
      * Combine fields
@@ -917,7 +916,7 @@ abstract class Builder
         if (method_exists($this, $field)) {
             $class = get_class($this->$field());
 
-            if ($this->relations[$field]) {
+            if (isset($this->relations[$field])) {
                 return $this->relations[$field];
             }
 
