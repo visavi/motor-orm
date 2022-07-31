@@ -13,7 +13,6 @@ use LimitIterator;
 use RuntimeException;
 use SplFileObject;
 use SplTempFileObject;
-use stdClass;
 use UnexpectedValueException;
 
 /**
@@ -41,14 +40,16 @@ abstract class Builder
     protected int|string $primary;
     protected Iterator $iterator;
     protected SplFileObject $file;
+
     protected array $orders = [];
     protected array $attr = [];
-    protected ?string $paginateName = null;
-    protected ?string $paginateView = null;
     protected array $relations = [];
     protected array $relate = [];
     protected array $with = [];
     protected array $where = [];
+
+    protected ?string $paginateName = null;
+    protected ?string $paginateView = null;
 
     /**
      * Begin querying the model.
@@ -309,7 +310,7 @@ abstract class Builder
     /**
      * Get records
      *
-     * @return Collection<static>|static[]
+     * @return Collection<static>
      */
     public function get(): Collection
     {
@@ -610,7 +611,7 @@ abstract class Builder
      *
      * @param iterable $values
      *
-     * @return stdClass[]|stdClass
+     * @return $this[]|$this
      */
     protected function mapper(iterable $values): array|object
     {
