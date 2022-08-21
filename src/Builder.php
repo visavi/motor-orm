@@ -639,10 +639,9 @@ abstract class Builder
         }
 
         // Parse relation
-        if ($this->with) {
+        if ($rows && $this->with) {
             $relations = [];
             foreach ($this->with as $with) {
-
                 foreach ($rows as $row) {
                     $method = $row->$with();
                     if (! $row->attr[$method->relate['localKey']]) {

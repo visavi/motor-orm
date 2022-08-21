@@ -11,6 +11,7 @@
 - Поиск по любым заданным условиям
 - Возврат структуры файла
 - Возврат количества записей в файле
+- Возврат информации о существовании записи
 - Сортировка строк
 - Запись строки в файл с генерацией автоинкрементного ключа
 - Обновление записей по любым условиям
@@ -78,8 +79,8 @@ TestModel::query()->find(1);
 # Find by name limit 1
 TestModel::query()->where('name', 'Миша')->limit(1)->get();
 
-# Find by name and last 1
-TestModel::query()->where('name', 'Миша')->reverse()->first();
+# Find by name and first 1
+TestModel::query()->where('name', 'Миша')->first();
 
 # Find by name and title
 TestModel::query()->where('name', 'Миша')->where('title', 'Заголовок10')->get();
@@ -110,11 +111,8 @@ TestModel::query()->where('time', '>', 1231231234)->count();
 # Get lines 1 - 10
 $lines = TestModel::query()->offset(0)->limit(10)->get();
 
-# Get lines reverse (last 10 lines reversed)
-$lines = TestModel::query()->reverse()->offset(0)->limit(10)->get();
-
-# Get from condition limit and reverse
-$lines = TestModel::query()->where('name', 'Миша')->limit(10)->reverse()->get();
+# Get last 10 records
+$lines = TestModel::query()->orderByDesc('created_at')->offset(0)->limit(10)->get();
 
 # Get headers
 TestModel::query()->headers();
@@ -126,7 +124,7 @@ TestModel::query()->first();
 TestModel::query()->limit(3)->get();
 
 # Get last 3 lines
-TestModel::query()->reverse()->limit(3)->get();
+TestModel::query()->orderByDesc('created_at')->limit(3)->get();
 
 # Find by name and double sort (time desc, id asc)
 Test::query()
