@@ -293,7 +293,7 @@ abstract class Builder
      */
     public function first(): ?static
     {
-        if (! $this->count()) {
+        if (! $this->exists()) {
             return null;
         }
 
@@ -305,6 +305,16 @@ abstract class Builder
         $this->attr = $this->mapper($this->iterator->current());
 
         return $this;
+    }
+
+    /**
+     * Exists record
+     *
+     * @return bool
+     */
+    public function exists(): bool
+    {
+        return (bool) $this->count();
     }
 
     /**
