@@ -134,11 +134,16 @@ Test::query()
     ->limit(3)
     ->get();
 
-# Insert string
-TestModel::query()->insert(['name' => 'Миша']);
+# Create string
+TestModel::query()->create(['name' => 'Миша']);
 
 # Update strings
 TestModel::query()->where('name', 'Миша')->update(['text' => 'Новый текст']);
+
+# Update string
+$test = TestModel::query()->where('name', 'Миша')->first();
+$test->text = 'Новый текст';
+$test->save();
 
 # Update strings
 $testModel = TestModel::query()->find(17);

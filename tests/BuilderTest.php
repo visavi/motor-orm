@@ -352,12 +352,12 @@ final class BuilderTest extends TestCase
     }
 
     /**
-     * Insert field
-     * @covers ::insert()
+     * Create field
+     * @covers ::create()
      */
-    public function testInsert(): void
+    public function testCreate(): void
     {
-        $data = Test3::query()->insert([
+        $data = Test3::query()->create([
            'name' => 'name1',
            'value' => 555,
         ]);
@@ -373,13 +373,13 @@ final class BuilderTest extends TestCase
     }
 
     /**
-     * Insert multiple fields
-     * @covers ::insert()
+     * Create multiple fields
+     * @covers ::create()
      */
-    public function testMultipleInsert(): void
+    public function testMultipleCreate(): void
     {
         foreach ($this->data() as $val) {
-            Test3::query()->insert($val);
+            Test3::query()->create($val);
         }
 
         $find = Test3::query()->get();
@@ -398,7 +398,7 @@ final class BuilderTest extends TestCase
     public function testFindUpdate(): void
     {
         foreach ($this->data() as $val) {
-            Test3::query()->insert($val);
+            Test3::query()->create($val);
         }
 
         $updatedLines = Test3::query()->find(1)->update(['name' => 'yyy', 'value' => 999]);
@@ -419,7 +419,7 @@ final class BuilderTest extends TestCase
     public function testUpdate(): void
     {
         foreach ($this->data() as $val) {
-            Test3::query()->insert($val);
+            Test3::query()->create($val);
         }
 
         Test3::query()->where('id', 3)->update(['name' => 'xxx', 'value' => 888]);
@@ -439,7 +439,7 @@ final class BuilderTest extends TestCase
     public function testDelete(): void
     {
         foreach ($this->data() as $val) {
-            Test3::query()->insert($val);
+            Test3::query()->create($val);
         }
         Test3::query()->where('id', 3)->delete();
 
@@ -457,7 +457,7 @@ final class BuilderTest extends TestCase
     public function testTruncate(): void
     {
         foreach ($this->data() as $val) {
-            Test3::query()->insert($val);
+            Test3::query()->create($val);
         }
 
         Test3::query()->truncate();

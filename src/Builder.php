@@ -83,6 +83,9 @@ abstract class Builder
         return $this;
     }
 
+    /**
+     * @return SplFileObject
+     */
     public function file(): SplFileObject
     {
         $file = new SplFileObject($this->filePath, 'a+');
@@ -407,13 +410,13 @@ abstract class Builder
     }
 
     /**
-     * Insert record
+     * Create record
      *
      * @param array $values
      *
      * @return $this
      */
-    public function insert(array $values): static
+    public function create(array $values): static
     {
         $fields   = array_fill_keys($this->headers, '');
         $diffKeys = array_diff_key($values, $fields);
@@ -453,6 +456,28 @@ abstract class Builder
         $this->attr = $values;
 
         return $this;
+    }
+
+    /**
+     * Save record
+     *
+     * @return bool
+     */
+    public function save(): bool
+    {
+        $result = false;
+
+        $this->process(function (&$current) use (&$result) {
+            if ((int) $current[0] === $this->attr[$this->primary]) {
+                $current = $this->attr;
+
+                $result = true;
+            }
+
+            $this->file->fputcsv($current);
+        });
+
+        return $result;
     }
 
     /**
