@@ -47,6 +47,7 @@ abstract class Builder
     protected array $relate = [];
     protected array $with = [];
     protected array $where = [];
+    protected array $casts = [];
 
     protected ?string $paginateName = null;
     protected ?string $paginateView = null;
@@ -635,9 +636,11 @@ abstract class Builder
                 $record = array_slice(array_pad($record, $fieldCount, null), 0, $fieldCount);
             }
 
-            $record = array_map([$this, 'cast'], $record);
+            $record = array_combine($this->headers, $record);
+            $record = array_map([$this, 'autoCast'], $record);
+            array_walk($record, [$this, 'customCast']);
 
-            return array_combine($this->headers, $record);
+            return $record;
         };
     }
 
@@ -705,13 +708,34 @@ abstract class Builder
     }
 
     /**
-     * Cast field
+     * Custom cast field
+     *
+     * @param string $value
+     * @param string $key
+     *
+     * @return void|null
+     */
+    protected function customCast(mixed &$value, string $key)
+    {
+        if (! $this->casts || ! isset($this->casts[$key])) {
+            return;
+        }
+
+        if (is_null($value)) {
+            return $value;
+        }
+
+        $value = $this->cast($this->casts[$key], $value);
+    }
+
+    /**
+     * Auto cast field
      *
      * @param string $value
      *
      * @return mixed
      */
-    protected function cast(string $value): mixed
+    protected function autoCast(string $value): mixed
     {
         if (is_numeric($value)) {
             return ! str_contains($value, '.') ? (int) $value : (float) $value;
@@ -812,6 +836,31 @@ abstract class Builder
             'like' => $like($field, $value),
             'not_like' => ! $like($field, $value),
             default => $field === $value,
+        };
+    }
+
+    /**
+     *  Cast
+     *
+     * @param string $cast
+     * @param mixed  $value
+     *
+     * @return mixed
+     */
+    private function cast(string $cast, mixed $value): mixed
+    {
+        if (is_null($value)) {
+            return $value;
+        }
+
+        return match ($cast) {
+            'int', 'integer' => (int) $value,
+            'real', 'float', 'double' => (float) $value,
+            'string' => (string) $value,
+            'bool', 'boolean' => (bool) $value,
+            'object' => json_decode($value, false),
+            'array' => json_decode($value, true),
+            default => $value,
         };
     }
 
