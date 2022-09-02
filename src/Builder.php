@@ -637,8 +637,7 @@ abstract class Builder
             }
 
             $record = array_combine($this->headers, $record);
-            $record = array_map([$this, 'autoCast'], $record);
-            array_walk($record, [$this, 'customCast']);
+            array_walk($record, [$this, 'casting']);
 
             return $record;
         };
@@ -708,44 +707,22 @@ abstract class Builder
     }
 
     /**
-     * Custom cast field
+     * Cast field
      *
      * @param string $value
      * @param string $key
      *
-     * @return void|null
+     * @return void
      */
-    protected function customCast(mixed &$value, string $key)
+    private function casting(mixed &$value, string $key): void
     {
-        if (! $this->casts || ! isset($this->casts[$key])) {
-            return;
-        }
-
-        if (is_null($value)) {
-            return $value;
-        }
-
-        $value = $this->cast($this->casts[$key], $value);
-    }
-
-    /**
-     * Auto cast field
-     *
-     * @param string $value
-     *
-     * @return mixed
-     */
-    protected function autoCast(string $value): mixed
-    {
-        if (is_numeric($value)) {
-            return ! str_contains($value, '.') ? (int) $value : (float) $value;
-        }
-
         if ($value === '') {
-            return null;
+            $value = null;
+        } elseif (isset($this->casts[$key])) {
+            $value = $this->cast($this->casts[$key], $value);
+        } elseif (str_ends_with($key, '_id') || $this->getPrimaryKey() === $key) {
+            $value = (int) $value;
         }
-
-        return $value;
     }
 
     /**
@@ -849,10 +826,6 @@ abstract class Builder
      */
     private function cast(string $cast, mixed $value): mixed
     {
-        if (is_null($value)) {
-            return $value;
-        }
-
         return match ($cast) {
             'int', 'integer' => (int) $value,
             'real', 'float', 'double' => (float) $value,
@@ -875,30 +848,25 @@ abstract class Builder
      */
     private function checker(array $wheres, array $args, mixed $operator = 'or'): bool
     {
-        $valids = [];
+        $valid = [];
 
         foreach ($wheres as $key => $where) {
             if (isset($where['field'])) {
                 $field = $args[$this->getKeyByField($where['field'])];
-                $valids[] = $this->condition($field, $where['condition'], $where['value']);
+                $valid[] = $this->condition($field, $where['condition'], $where['value']);
             } else {
-                $valids[] = $this->checker($where, $args, $key);
+                $valid[] = $this->checker($where, $args, $key);
             }
         }
 
         if ($operator === 'or') {
-            foreach ($valids as $valid) {
-                if ($valid === true) {
-                    return true;
-                }
+            if (in_array(true, $valid, true)) {
+                return true;
             }
             return false;
         }
-
-        foreach ($valids as $valid) {
-            if ($valid === false) {
-                return false;
-            }
+        if (in_array(false, $valid, true)) {
+            return false;
         }
 
         return true;
