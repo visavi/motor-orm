@@ -281,7 +281,7 @@ abstract class Builder
      */
     public function find(int|string $id): ?static
     {
-        $find = $this->where($this->getPrimaryKey(), $id)->first();
+        $find = $this->where($this->primary, $id)->first();
 
         if (! $find) {
             return null;
@@ -637,7 +637,16 @@ abstract class Builder
             }
 
             $record = array_combine($this->headers, $record);
-            array_walk($record, [$this, 'casting']);
+
+            array_walk($record, function (mixed &$value, string $field) {
+                if ($value === '') {
+                    $value = null;
+                } elseif (isset($this->casts[$field])) {
+                    $value = $this->cast($this->casts[$field], $value);
+                } elseif (str_ends_with($field, '_id') || $this->getPrimaryKey() === $field) {
+                    $value = (int) $value;
+                }
+            });
 
             return $record;
         };
@@ -704,25 +713,6 @@ abstract class Builder
         }
 
         return $rows;
-    }
-
-    /**
-     * Cast field
-     *
-     * @param string $value
-     * @param string $key
-     *
-     * @return void
-     */
-    private function casting(mixed &$value, string $key): void
-    {
-        if ($value === '') {
-            $value = null;
-        } elseif (isset($this->casts[$key])) {
-            $value = $this->cast($this->casts[$key], $value);
-        } elseif (str_ends_with($key, '_id') || $this->getPrimaryKey() === $key) {
-            $value = (int) $value;
-        }
     }
 
     /**
