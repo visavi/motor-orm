@@ -470,8 +470,13 @@ abstract class Builder
 
         $this->process(function (&$current) use (&$result) {
             if ((int) $current[0] === $this->attr[$this->primary]) {
-                $current = $this->attr;
+                $current = array_map(static function ($value) {
+                    if ($value === false) {
+                        return "0";
+                    }
 
+                    return (string) $value;
+                }, $this->attr);
                 $result = true;
             }
 
@@ -505,6 +510,14 @@ abstract class Builder
                 $affectedRows++;
                 $map = (array) $this->mapper($current);
                 $current = array_replace($map, $values);
+
+                $current = array_map(static function ($value) {
+                    if ($value === false) {
+                        return "0";
+                    }
+
+                    return (string) $value;
+                }, $current);
             }
 
             $this->file->fputcsv($current);
