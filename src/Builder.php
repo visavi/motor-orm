@@ -451,7 +451,9 @@ abstract class Builder
             throw new UnexpectedValueException(sprintf('%s() duplicate entry. Column "%s" with the value "%s" already exists', __METHOD__, $this->primary, $values[$this->primary]));
         }
 
-        $this->file->fputcsv(array_replace($fields, $values));
+        $current = array_replace($fields, $values);
+        $current = $this->prepare($current);
+        $this->file->fputcsv($current);
         $this->file->flock(LOCK_UN);
 
         $this->attr = $values;
@@ -470,13 +472,8 @@ abstract class Builder
 
         $this->process(function (&$current) use (&$result) {
             if ((int) $current[0] === $this->attr[$this->primary]) {
-                $current = array_map(static function ($value) {
-                    if ($value === false) {
-                        return "0";
-                    }
+                $current = $this->prepare($this->attr);
 
-                    return (string) $value;
-                }, $this->attr);
                 $result = true;
             }
 
@@ -510,14 +507,7 @@ abstract class Builder
                 $affectedRows++;
                 $map = (array) $this->mapper($current);
                 $current = array_replace($map, $values);
-
-                $current = array_map(static function ($value) {
-                    if ($value === false) {
-                        return "0";
-                    }
-
-                    return (string) $value;
-                }, $current);
+                $current = $this->prepare($current);
             }
 
             $this->file->fputcsv($current);
@@ -838,6 +828,28 @@ abstract class Builder
             'array' => json_decode($value, true),
             default => $value,
         };
+    }
+
+    /**
+     * Prepare
+     *
+     * @param $current
+     *
+     * @return mixed
+     */
+    private function prepare($current)
+    {
+        return array_map(static function ($value) {
+            if ($value === false) {
+                return '0';
+            }
+
+            if (is_array($value) || is_object($value)) {
+                return json_encode($value, JSON_UNESCAPED_UNICODE);
+            }
+
+            return (string) $value;
+        }, $current);
     }
 
     /**
