@@ -780,19 +780,27 @@ abstract class Builder
     private function condition(mixed $field, string $condition, mixed $value = null): bool
     {
         $like = static function(mixed $field, mixed $value) {
+            if (! $value) {
+                return false;
+            }
+
+            $value = (string) $value;
             if ($value[0] === '%' && $value[-1] === '%') {
-                return str_contains($field, trim($value, '%'));
+                return mb_strripos($field, trim($value, '%')) !== false;
             }
 
             if ($value[0] === '%') {
-                return str_starts_with($field, trim($value, '%'));
+                return mb_stripos($field, trim($value, '%')) === 0;
             }
 
             if ($value[-1] === '%') {
-                return str_ends_with($field, trim($value, '%'));
+                $value = trim($value, '%');
+                $pos = mb_strlen($field) - mb_strlen($value);
+
+                return mb_strripos($field, $value) === $pos;
             }
 
-            return str_contains($field, $value);
+            return mb_stripos($field, $value) !== false;
         };
 
         return match ($condition) {
@@ -835,9 +843,9 @@ abstract class Builder
      *
      * @param $current
      *
-     * @return mixed
+     * @return array
      */
-    private function prepare($current)
+    private function prepare($current): array
     {
         return array_map(static function ($value) {
             if ($value === false) {
