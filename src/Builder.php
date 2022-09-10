@@ -786,21 +786,23 @@ abstract class Builder
 
             $value = (string) $value;
             if ($value[0] === '%' && $value[-1] === '%') {
-                return mb_strripos($field, trim($value, '%')) !== false;
+                return mb_stripos($field, trim($value, '%'), 0, 'UTF-8') !== false;
             }
 
             if ($value[0] === '%') {
-                return mb_stripos($field, trim($value, '%')) === 0;
+                return mb_stripos($field, trim($value, '%'), 0, 'UTF-8') === 0;
             }
 
             if ($value[-1] === '%') {
                 $value = trim($value, '%');
-                $pos = mb_strlen($field) - mb_strlen($value);
-
-                return mb_strripos($field, $value) === $pos;
+                return mb_strripos($field, $value, 0, 'UTF-8') === mb_strlen($field, 'UTF-8') - mb_strlen($value, 'UTF-8');
             }
 
-            return mb_stripos($field, $value) !== false;
+            return mb_stripos($field, $value, 0, 'UTF-8') !== false;
+        };
+
+        $lax = static function(mixed $field, mixed $value) {
+            return mb_strtolower($field, 'UTF-8') === mb_strtolower($value, 'UTF-8');
         };
 
         return match ($condition) {
@@ -813,6 +815,7 @@ abstract class Builder
             'not_in' => ! isset($value[$field]),
             'like' => $like($field, $value),
             'not_like' => ! $like($field, $value),
+            'lax' => $lax($field, $value),
             default => $field === $value,
         };
     }
