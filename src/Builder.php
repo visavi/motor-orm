@@ -646,7 +646,11 @@ abstract class Builder
                     $value = null;
                 } elseif (isset($this->casts[$field])) {
                     $value = $this->cast($this->casts[$field], $value);
-                } elseif (str_ends_with($field, '_id') || $this->getPrimaryKey() === $field) {
+                } elseif (
+                    $this->getPrimaryKey() === $field
+                    || str_ends_with($field, '_id')
+                    || str_ends_with($field, '_at')
+                ) {
                     $value = (int) $value;
                 }
             });
