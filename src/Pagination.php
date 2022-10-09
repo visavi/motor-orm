@@ -20,7 +20,7 @@ class Pagination
     public int $offset;
     public int $page;
     public ?string $path = null;
-    public array $appends;
+    public array $appends = [];
 
     public function __construct(
         protected ?string $view = null,
