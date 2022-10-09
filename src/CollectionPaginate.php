@@ -53,4 +53,32 @@ class CollectionPaginate extends Collection
     {
         return $this->paginator->links();
     }
+
+    /**
+     * Add path
+     *
+     * @param string $path
+     *
+     * @return $this
+     */
+    public function withPath(string $path): static
+    {
+        $this->paginator->path = $path;
+
+        return $this;
+    }
+
+    /**
+     * Append params url
+     *
+     * @param array $appends
+     *
+     * @return $this
+     */
+    public function appends(array $appends): static
+    {
+        $this->paginator->appends = $appends;
+
+        return $this;
+    }
 }

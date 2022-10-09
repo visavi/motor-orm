@@ -10,7 +10,7 @@ namespace MotorORM;
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
- * @version 2.0
+ * @version 3.0
  */
 class Pagination
 {
@@ -19,6 +19,8 @@ class Pagination
     public int $crumbs;
     public int $offset;
     public int $page;
+    public ?string $path = null;
+    public array $appends;
 
     public function __construct(
         protected ?string $view = null,
@@ -77,7 +79,7 @@ class Pagination
     /**
      * Get items
      *
-     * @return array Сформированный блок с кнопками страниц
+     * @return array
      */
     public function items(): array
     {
@@ -85,14 +87,14 @@ class Pagination
             return [];
         }
 
-        $pages = [];
-        $pageCount = (int) ceil($this->total / $this->limit);
+        $pages      = [];
+        $pageCount  = (int) ceil($this->total / $this->limit);
         $indexFirst = max($this->page - $this->crumbs, 1);
-        $indexLast = min($this->page + $this->crumbs, $pageCount);
+        $indexLast  = min($this->page + $this->crumbs, $pageCount);
 
         if ($this->page !== 1) {
             $pages[] = [
-                'link' => $this->pageName . '=' . $this->page - 1,
+                'link' => $this->buildUrl($this->page - 1),
                 'page' => $this->page - 1,
                 'name' => '«',
             ];
@@ -100,7 +102,7 @@ class Pagination
 
         if ($this->page > $this->crumbs + 1) {
             $pages[] = [
-                'link' => $this->pageName . '=1',
+                'link' => $this->buildUrl(1),
                 'page' => 1,
                 'name' => 1,
             ];
@@ -119,7 +121,7 @@ class Pagination
                 ];
             } else {
                 $pages[] = [
-                    'link' => $this->pageName . '=' . $i,
+                    'link' => $this->buildUrl($i),
                     'page' => $i,
                     'name' => $i,
                 ];
@@ -132,8 +134,9 @@ class Pagination
                     'separator' => true,
                 ];
             }
+
             $pages[] = [
-                'link' => $this->pageName . '=' . $pageCount,
+                'link' => $this->buildUrl($pageCount),
                 'page' => $pageCount,
                 'name' => $pageCount,
             ];
@@ -141,7 +144,7 @@ class Pagination
 
         if ($this->page !== $pageCount) {
             $pages[] = [
-                'link' => $this->pageName . '=' . $this->page + 1,
+                'link' => $this->buildUrl($this->page + 1),
                 'page' => $this->page + 1,
                 'name' => '»',
             ];
@@ -186,5 +189,41 @@ class Pagination
     public function setPageName(string $name): void
     {
         $this->pageName = $name;
+    }
+
+    /**
+     * Add path
+     *
+     * @param string $path
+     *
+     * @return void
+     */
+    public function withPath(string $path): void
+    {
+        $this->path = $path;
+    }
+
+    /**
+     * Append params url
+     *
+     * @param array $appends
+     *
+     * @return void
+     */
+    public function appends(array $appends): void
+    {
+        $this->appends = $appends;
+    }
+
+    /**
+     * Build url
+     *
+     * @param int $page
+     *
+     * @return string
+     */
+    protected function buildUrl(int $page): string
+    {
+        return $this->path . '?' . http_build_query([$this->pageName => $page] + $this->appends);
     }
 }
