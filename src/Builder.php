@@ -794,12 +794,12 @@ abstract class Builder
             }
 
             if ($value[0] === '%') {
-                return mb_stripos($field, trim($value, '%'), 0, 'UTF-8') === 0;
+                $value = trim($value, '%');
+                return mb_strripos($field, $value, 0, 'UTF-8') === mb_strlen($field, 'UTF-8') - mb_strlen($value, 'UTF-8');
             }
 
             if ($value[-1] === '%') {
-                $value = trim($value, '%');
-                return mb_strripos($field, $value, 0, 'UTF-8') === mb_strlen($field, 'UTF-8') - mb_strlen($value, 'UTF-8');
+                return mb_stripos($field, trim($value, '%'), 0, 'UTF-8') === 0;
             }
 
             return mb_stripos($field, $value, 0, 'UTF-8') !== false;
