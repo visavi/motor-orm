@@ -125,11 +125,24 @@ abstract class Builder
     /**
      * Get primary key
      *
-     * @return int|string
+     * @return string
      */
-    public function getPrimaryKey(): int|string
+    public function getPrimaryKey(): string
     {
         return $this->headers[0];
+    }
+
+    /**
+     * Get the default foreign key name for the model.
+     *
+     * @return string
+     */
+    public function getForeignKey(): string
+    {
+        $className = basename(str_replace('\\', '/', $this::class));
+        $model = strtolower(preg_replace('/(.)(?=[A-Z])/u', '$1_', $className));
+
+        return  $model . '_' . $this->getPrimaryKey();
     }
 
     /**
@@ -582,22 +595,23 @@ abstract class Builder
      * Has one relation
      *
      * @param string $model
-     * @param string $localKey
-     * @param string $foreignKey
+     * @param string|null $foreignKey
+     * @param string|null $localKey
      *
      * @return mixed
      */
-    public function hasOne(string $model, string $localKey, string $foreignKey = 'id'): mixed
+    public function hasOne(string $model, ?string $foreignKey = null, ?string $localKey = null): mixed
     {
-        $model = new $model();
+        $model = (new $model())->query();
+        $foreignKey = $foreignKey ?: $model->getForeignKey();
+        $localKey   = $localKey ?: $this->getPrimaryKey();
 
         $relate = [
             'type'       => 'hasOne',
             'model'      => $model,
-            'localKey'   => $localKey,
             'foreignKey' => $foreignKey,
+            'localKey'   => $localKey,
         ];
-
 
         return $model->query()->setRelate($relate)->where($foreignKey, $this->$localKey);
     }
@@ -606,23 +620,74 @@ abstract class Builder
      * Has many relation
      *
      * @param string $model
-     * @param string $localKey
-     * @param string $foreignKey
+     * @param string|null $localKey
+     * @param string|null $foreignKey
      *
      * @return mixed
      */
-    public function hasMany(string $model, string $localKey, string $foreignKey = 'id'): mixed
+    public function hasMany(string $model, ?string $foreignKey = null, ?string $localKey = null): mixed
     {
         $model = new $model();
+        $foreignKey = $foreignKey ?: $this->getForeignKey();
+        $localKey   = $localKey ?: $this->getPrimaryKey();
 
         $relate = [
             'type'       => 'hasMany',
             'model'      => $model,
-            'localKey'   => $localKey,
             'foreignKey' => $foreignKey,
+            'localKey'   => $localKey,
         ];
 
         return $model->query()->setRelate($relate)->where($foreignKey, $this->$localKey);
+    }
+
+    /**
+     * Has many through relation
+     *
+     * @param string $model
+     * @param string $through
+     * @param string|null $foreignKey
+     * @param string|null $secondForeignKey
+     * @param string|null $localKey
+     * @param string|null $secondLocalKey
+     *
+     * @return mixed
+     */
+    public function hasManyThrough(
+        string $model,
+        string $through,
+        ?string $foreignKey = null,
+        ?string $secondForeignKey = null,
+        ?string $localKey = null,
+        ?string $secondLocalKey = null,
+
+    ): mixed
+    {
+        $model = (new $model())->query();
+        $through = (new $through())->query();
+
+        $foreignKey       = $foreignKey ?: $this->getForeignKey();
+        $secondForeignKey = $secondForeignKey ?: $model->getForeignKey();
+        $localKey         = $localKey ?: $this->getPrimaryKey();
+        $secondLocalKey   = $secondLocalKey ?: $through->getPrimaryKey();
+
+        $relate = [
+            'type'             => 'hasManyThrough',
+            'model'            => $model,
+            'through'          => $through,
+            'foreignKey'       => $foreignKey,
+            'secondForeignKey' => $secondForeignKey,
+            'localKey'         => $localKey,
+            'secondLocalKey'   => $secondLocalKey,
+        ];
+
+        $throughKeys = $through
+            ->query()
+            ->where($foreignKey, $this->$localKey)
+            ->get()
+            ->pluck($secondForeignKey);
+
+        return $model->query()->setRelate($relate)->whereIn($secondLocalKey, $throughKeys);
     }
 
     /**
