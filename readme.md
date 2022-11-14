@@ -263,7 +263,7 @@ class Story extends Model
 ```php
 class Story extends Model
 {
-    public function comments(): Builder
+    public function tags(): Builder
     {
         return $this->hasManyThrough(Tag::class, TagStory::class);
     }
