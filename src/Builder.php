@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MotorORM;
 
 use ArrayIterator;
+use BadMethodCallException;
 use CallbackFilterIterator;
 use Closure;
 use InvalidArgumentException;
@@ -1051,6 +1052,23 @@ abstract class Builder
         $this->where = $where;
 
         return $this;
+    }
+
+    /**
+     * @param string $name
+     * @param array  $arguments
+     *
+     * @return mixed
+     */
+    public function __call(string $name, array $arguments)
+    {
+        if (method_exists($this, 'scope' . ucfirst($name))) {
+            return $this->{'scope' . ucfirst($name)}($this, ...$arguments);
+        }
+
+        throw new BadMethodCallException(sprintf(
+            'Call to undefined method %s::%s()', static::class, $name
+        ));
     }
 
     /**

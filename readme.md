@@ -16,6 +16,8 @@
 - Запись строки в файл с генерацией автоинкрементного ключа
 - Обновление записей по любым условиям
 - Удаление записей по любым условиям
+- Приведение типов (Casts)
+- Scope
 - Очистка файла
 - Жадная загрузка
 - Связь один к одному
@@ -179,8 +181,8 @@ $test = TestModel::query()->where('tag', 'like', 'hi')->get();
 
 При поиске orm использует строгое сравнение, чтобы задействовать нестрогий режим, можно использовать lax
 ```php
-// Будут найдено первое совпадение ВАСЯ, вася, васЯ, Вася итд
-$user = User::query()->where('login', 'lax', 'Вася')->first();
+// Будут найдено первое совпадение NAME, name, namE, Name итд
+$user = User::query()->where('login', 'lax', 'name')->first();
 ```
 
 ### Приведение типов (Casts)
@@ -210,6 +212,48 @@ class Story extends Model
 - 'bool', 'boolean' => bool
 - 'object' => json_decode($value, false),
 - 'array' => json_decode($value, true),
+
+### Условия запросов (Scope)
+
+Каждый scope — это обычный метод, который начинается с префикса scope. Именно по префиксу ORM понимает, что это scope. Внутрь scope передаётся запрос, на который можно навешивать дополнительные условия.
+
+```php
+class Story extends Model
+{
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('active', true);
+    }
+}
+```
+
+Использование:
+
+```php
+Story::query()
+    ->active()
+    ->paginate($perPage);
+```
+
+#### Динамические условия
+Некоторые scope зависят от параметров, передающихся в процессе составления запроса. Для этого достаточно описать эти параметры внутри scope после параметра $query:
+
+```php
+class Story extends Model
+{
+    public function scopeOfType(Builder $query, string $type): Builder
+    {
+        return $query->where('type', $type);
+    }
+}
+```
+
+Использование:
+```php
+Story::query()
+    ->ofType('new')
+    ->paginate($perPage);
+```
 
 ### Связи (Relations)
 В данный момент поддерживается 3 вида связей
@@ -259,7 +303,7 @@ class Story extends Model
 #### Многие ко многим (hasManyThrough)
 5 параметров, имя конечного класса, имя промежуточного класса, внешние и внутренние ключи
 
-Внешние и внутренние ключи определяются автоматически, за исключением когда имена полей не совпадают с именем класса
+Внешние и внутренние ключи определяются автоматически, за исключением когда имена полей не совпадают с именами классов
 ```php
 class Story extends Model
 {
