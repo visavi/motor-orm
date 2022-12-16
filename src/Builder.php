@@ -593,6 +593,28 @@ abstract class Builder
     }
 
     /**
+     * Apply the callback if the given “value” is (or resolves to) truthy.
+     *
+     * @param mixed         $value
+     * @param callable      $callback
+     * @param callable|null $default
+     *
+     * @return $this
+     */
+    public function when(mixed $value, callable $callback, callable $default = null): static
+    {
+        if ($value) {
+            return $callback($this, $value) ?? $this;
+        }
+
+        if ($default) {
+            return $default($this, $value) ?? $this;
+        }
+
+        return $this;
+    }
+
+    /**
      * Has one relation
      *
      * @param string $model
