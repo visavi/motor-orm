@@ -326,6 +326,16 @@ abstract class Builder
     }
 
     /**
+     * Get refresh record
+     *
+     * @return Builder|null
+     */
+    public function refresh(): ?static
+    {
+        return $this->first();
+    }
+
+    /**
      * Exists record
      *
      * @return bool
