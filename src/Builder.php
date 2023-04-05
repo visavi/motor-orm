@@ -1141,7 +1141,7 @@ abstract class Builder
      */
     public function __isset(string $field)
     {
-        return isset($this->attr[$field]);
+        return array_key_exists($field, $this->attr);
     }
 
     /**
