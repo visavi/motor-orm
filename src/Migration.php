@@ -14,11 +14,7 @@ use UnexpectedValueException;
  */
 class Migration
 {
-    protected string $column;
-    protected string $renameColumn;
-    protected mixed $position;
-    protected mixed $default = null;
-    protected mixed $after = false;
+    protected array $columns = [];
     protected SplFileObject $file;
 
     public function __construct(public Builder $builder)
@@ -27,16 +23,29 @@ class Migration
     }
 
     /**
-     * Set column
+     * Set create column
      *
      * @param string $column
      *
      * @return $this
      */
-    public function column(string $column): static
+    public function create(string $column): static
     {
-        $this->column = $column;
-        $this->position = array_search($column, $this->builder->headers(), true);
+        if ($this->existsColumn($column)) {
+            throw new UnexpectedValueException(
+                sprintf('%s() adding an existing column. Column "%s" already exists', __METHOD__, $column)
+            );
+        }
+
+        $this->columns[$column] = [
+            'name'    => $column,
+            'default' => null,
+            'before'  => false,
+            'after'   => false,
+            'create'  => true,
+            'rename'  => false,
+            'delete'  => false,
+        ];
 
         return $this;
     }
@@ -50,7 +59,8 @@ class Migration
      */
     public function default(mixed $default): static
     {
-        $this->default = $default;
+        $lastColumn = array_key_last($this->columns);
+        $this->columns[$lastColumn]['default'] = $default;
 
         return $this;
     }
@@ -64,7 +74,23 @@ class Migration
      */
     public function after(string $column): static
     {
-        $this->after = array_search($column, $this->builder->headers(), true);
+        $lastColumn = array_key_last($this->columns);
+        $this->columns[$lastColumn]['after'] = $column;
+
+        return $this;
+    }
+
+    /**
+     * Set before column
+     *
+     * @param string $column
+     *
+     * @return $this
+     */
+    public function before(string $column): static
+    {
+        $lastColumn = array_key_last($this->columns);
+        $this->columns[$lastColumn]['before'] = $column;
 
         return $this;
     }
@@ -73,87 +99,136 @@ class Migration
      * Set rename column
      *
      * @param string $column
+     * @param string $to
      *
      * @return $this
      */
-    public function to(string $column): static
+    public function rename(string $column, string $to): static
     {
-        $this->renameColumn = $column;
+
+        if (! $this->existsColumn($column)) {
+            throw new UnexpectedValueException(
+                sprintf('%s() renaming undefined column. Column "%s" does not exist', __METHOD__, $column)
+            );
+        }
+
+        if ($this->existsColumn($to)) {
+            throw new UnexpectedValueException(
+                sprintf('%s() renaming an existing column. Column "%s" already exist', __METHOD__, $to)
+            );
+        }
+
+        $this->columns[$column] = [
+            'name'   => $column,
+            'to'     => $to,
+            'before' => false,
+            'after'  => false,
+            'rename' => true,
+            'delete' => false,
+        ];
 
         return $this;
     }
 
     /**
-     * Rename column
+     * Set delete column
      *
-     * @return string;
-     */
-    public function rename(): string
-    {
-        if (! $this->existsColumn($this->column)) {
-            throw new UnexpectedValueException(
-                sprintf('%s() renaming undefined column. Column "%s" does not exist', __METHOD__, $this->column)
-            );
-        }
-
-        if ($this->existsColumn($this->renameColumn)) {
-            throw new UnexpectedValueException(
-                sprintf('%s() renaming an existing column. Column "%s" already exist', __METHOD__, $this->renameColumn)
-            );
-        }
-
-        $this->process(function ($temp, &$current) {
-            if ($temp->key() === 0) {
-                $current[$this->position] = $this->renameColumn;
-            }
-        });
-
-        return sprintf('Column "%s" successfully renamed to "%s"!', $this->column, $this->renameColumn);
-    }
-
-
-    /**
-     * Delete column
+     * @param string $column
      *
-     * @return string
+     * @return $this
      */
-    public function delete(): string
+    public function delete(string $column): static
     {
-        if (! $this->existsColumn($this->column)) {
+        if (! $this->existsColumn($column)) {
             throw new UnexpectedValueException(
-                sprintf('%s() deleting undefined column. Column "%s" does not exist', __METHOD__, $this->column)
+                sprintf('%s() deleting undefined column. Column "%s" does not exist', __METHOD__, $column)
             );
         }
 
-        $this->process(function ($temp, &$current) {
-            $this->deleteColumn($current, $this->position);
-        });
+        $this->columns[$column] = [
+            'name'   => $column,
+            'delete' => true,
+            'before' => false,
+            'after'  => false,
+        ];
 
-        return sprintf('Column "%s" successfully deleted!', $this->column);
+        return $this;
     }
 
     /**
-     * Create column
+     * Create table
      *
-     * @return string
+     * @param Closure $closure
+     *
+     * @return bool
      */
-    public function create(): string
+    public function createTable(Closure $closure): bool
     {
-        if ($this->existsColumn($this->column)) {
+        if (
+            file_exists($this->builder->file()->getRealPath())
+            && filesize($this->builder->file()->getRealPath()) !== 0
+        ) {
             throw new UnexpectedValueException(
-                sprintf('%s() adding an existing column. Column "%s" already exist', __METHOD__, $this->column)
+                sprintf('%s() creating table. Table "%s" already exists', __METHOD__, $this->builder->getTable())
             );
         }
 
-        $this->process(function ($temp, &$current) {
-            if ($temp->key() === 0) {
-                $this->addColumn($current, $this->column, $this->after);
-            } else {
-                $this->addColumn($current, $this->default, $this->after);
-            }
-        });
+        $closure($this);
 
-        return sprintf('Column "%s" successfully added!', $this->column);
+        $columns = array_column($this->columns, 'name');
+        $this->file->fputcsv($columns);
+        $this->columns = [];
+
+        return true;
+    }
+
+    /**
+     * Delete table
+     *
+     * @return bool
+     */
+    public function deleteTable(): bool
+    {
+        if (! file_exists($this->builder->file()->getRealPath())) {
+            throw new UnexpectedValueException(
+                sprintf('%s() deleting table. Table "%s" does not exist', __METHOD__, $this->builder->getTable())
+            );
+        }
+
+        unlink($this->builder->file()->getPathname());
+
+        return true;
+    }
+
+    /**
+     * Change table
+     *
+     * @param Closure $closure
+     *
+     * @return bool
+     */
+    public function changeTable(Closure $closure): bool
+    {
+        $closure($this);
+
+        foreach ($this->columns as $column) {
+            $column['curPos'] = array_search($column['name'], $this->builder->headers(), true);
+            $column['newPos'] = array_search($column['before'] ?: $column['after'], $this->builder->headers(), true);
+
+            $this->process(function ($temp, &$current) use ($column) {
+                if ($column['delete']) {
+                    $this->deleteColumn($current, $column);
+                }  elseif ($column['rename']) {
+                    $this->renameColumn($current, $column, $temp->key());
+                } else {
+                    $this->addColumn($current, $column, $temp->key());
+                }
+            });
+        }
+
+        $this->columns = [];
+
+        return true;
     }
 
     /**
@@ -199,20 +274,39 @@ class Migration
     }
 
     /**
-     * Add column after position
+     * Add column
      *
      * @param array $array
-     * @param mixed $value
-     * @param mixed $position
+     * @param array $column
+     * @param int   $line
      *
      * @return void
      */
-    private function addColumn(array &$array, mixed $value, mixed $position = false): void
+    private function addColumn(array &$array, array $column, int $line): void
     {
-        if ($position !== false) {
-            array_splice($array, $position + 1, 0, [$value]);
+        $columnValue = $line === 0 ? $column['name'] : $column['default'];
+
+        if ($column['newPos'] !== false) {
+            $position = $column['before'] ? $column['newPos'] : $column['newPos'] + 1;
+            array_splice($array, $position, 0, [$columnValue]);
         } else {
-            $array[] = $value;
+            $array[] = $columnValue;
+        }
+    }
+
+    /**
+     * Rename column
+     *
+     * @param array $array
+     * @param array $column
+     * @param int   $line
+     *
+     * @return void
+     */
+    private function renameColumn(array &$array, array $column, int $line): void
+    {
+        if ($line === 0 && $column['curPos'] !== false) {
+            $array[$column['curPos']] = $column['to'];
         }
     }
 
@@ -220,14 +314,14 @@ class Migration
      * Delete column from position
      *
      * @param array $array
-     * @param mixed $position
+     * @param array $column
      *
      * @return void
      */
-    private function deleteColumn(array &$array, mixed $position = false): void
+    private function deleteColumn(array &$array, array $column): void
     {
-        if ($position !== false) {
-            unset($array[$position]);
+        if ($column['curPos'] !== false) {
+            unset($array[$column['curPos']]);
         }
     }
 
@@ -240,6 +334,6 @@ class Migration
      */
     private function existsColumn(string $column): bool
     {
-        return in_array($column, $this->builder->headers(), true);
+        return in_array($column,  $this->builder->headers(), true);
     }
 }

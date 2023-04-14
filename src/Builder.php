@@ -38,7 +38,7 @@ abstract class Builder
     protected int $offset = 0;
     protected int $limit = -1;
     protected array $headers;
-    protected int|string $primary;
+    protected ?string $primary;
     protected Iterator $iterator;
     protected SplFileObject $file;
 
@@ -106,7 +106,7 @@ abstract class Builder
      *
      * @return string
      */
-    public function getTable()
+    public function getTable(): string
     {
         return basename($this->filePath, '.csv');
     }
@@ -120,17 +120,17 @@ abstract class Builder
     {
         $this->file->seek(0);
 
-        return $this->file->current();
+        return $this->file->current() ?: [];
     }
 
     /**
      * Get primary key
      *
-     * @return string
+     * @return string|null
      */
-    public function getPrimaryKey(): string
+    public function getPrimaryKey(): ?string
     {
-        return $this->headers[0];
+        return $this->headers[0] ?? null;
     }
 
     /**
