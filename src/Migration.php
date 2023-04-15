@@ -31,7 +31,7 @@ class Migration
      */
     public function create(string $column): static
     {
-        if ($this->existsColumn($column)) {
+        if ($this->hasColumn($column)) {
             throw new UnexpectedValueException(
                 sprintf('%s() adding an existing column. Column "%s" already exists', __METHOD__, $column)
             );
@@ -106,13 +106,13 @@ class Migration
     public function rename(string $column, string $to): static
     {
 
-        if (! $this->existsColumn($column)) {
+        if (! $this->hasColumn($column)) {
             throw new UnexpectedValueException(
                 sprintf('%s() renaming undefined column. Column "%s" does not exist', __METHOD__, $column)
             );
         }
 
-        if ($this->existsColumn($to)) {
+        if ($this->hasColumn($to)) {
             throw new UnexpectedValueException(
                 sprintf('%s() renaming an existing column. Column "%s" already exist', __METHOD__, $to)
             );
@@ -139,7 +139,7 @@ class Migration
      */
     public function delete(string $column): static
     {
-        if (! $this->existsColumn($column)) {
+        if (! $this->hasColumn($column)) {
             throw new UnexpectedValueException(
                 sprintf('%s() deleting undefined column. Column "%s" does not exist', __METHOD__, $column)
             );
@@ -164,10 +164,7 @@ class Migration
      */
     public function createTable(Closure $closure): bool
     {
-        if (
-            file_exists($this->builder->file()->getRealPath())
-            && filesize($this->builder->file()->getRealPath()) !== 0
-        ) {
+        if ($this->hasTable() && filesize($this->builder->file()->getRealPath()) !== 0) {
             throw new UnexpectedValueException(
                 sprintf('%s() creating table. Table "%s" already exists', __METHOD__, $this->builder->getTable())
             );
@@ -189,7 +186,7 @@ class Migration
      */
     public function deleteTable(): bool
     {
-        if (! file_exists($this->builder->file()->getRealPath())) {
+        if (! $this->hasTable()) {
             throw new UnexpectedValueException(
                 sprintf('%s() deleting table. Table "%s" does not exist', __METHOD__, $this->builder->getTable())
             );
@@ -229,6 +226,28 @@ class Migration
         $this->columns = [];
 
         return true;
+    }
+
+    /**
+     * Has column
+     *
+     * @param string $column
+     *
+     * @return bool
+     */
+    public function hasColumn(string $column): bool
+    {
+        return in_array($column,  $this->builder->headers(), true);
+    }
+
+    /**
+     * Has table
+     *
+     * @return bool
+     */
+    public function hasTable(): bool
+    {
+        return file_exists($this->builder->file()->getRealPath());
     }
 
     /**
@@ -323,17 +342,5 @@ class Migration
         if ($column['curPos'] !== false) {
             unset($array[$column['curPos']]);
         }
-    }
-
-    /**
-     * Check exists column
-     *
-     * @param string $column
-     *
-     * @return bool
-     */
-    private function existsColumn(string $column): bool
-    {
-        return in_array($column,  $this->builder->headers(), true);
     }
 }
