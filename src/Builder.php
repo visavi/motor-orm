@@ -34,7 +34,8 @@ abstract class Builder
         self::SORT_DESC
     ];
 
-    protected string $filePath;
+    protected string $table;
+    protected string $tableDir;
     protected int $offset = 0;
     protected int $limit = -1;
     protected array $headers;
@@ -90,7 +91,8 @@ abstract class Builder
      */
     public function file(): SplFileObject
     {
-        $file = new SplFileObject($this->filePath, 'a+');
+        $filePath = sprintf('%s/%s.csv', $this->tableDir, $this->table);
+        $file = new SplFileObject($filePath, 'a+');
         $file->setFlags(
             SplFileObject::READ_AHEAD |
             SplFileObject::SKIP_EMPTY |
@@ -108,7 +110,7 @@ abstract class Builder
      */
     public function getTable(): string
     {
-        return basename($this->filePath, '.csv');
+        return $this->table;
     }
 
     /**
