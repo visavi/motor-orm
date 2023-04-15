@@ -164,7 +164,7 @@ class Migration
      */
     public function createTable(Closure $closure): bool
     {
-        if ($this->hasTable() && filesize($this->builder->file()->getRealPath()) !== 0) {
+        if ($this->hasTable()) {
             throw new UnexpectedValueException(
                 sprintf('%s() creating table. Table "%s" already exists', __METHOD__, $this->builder->getTable())
             );
@@ -173,6 +173,9 @@ class Migration
         $closure($this);
 
         $columns = array_column($this->columns, 'name');
+
+        chmod($this->builder->file()->getRealPath(), 0666);
+
         $this->file->fputcsv($columns);
         $this->columns = [];
 
@@ -247,7 +250,8 @@ class Migration
      */
     public function hasTable(): bool
     {
-        return file_exists($this->builder->file()->getRealPath());
+        return file_exists($this->builder->file()->getRealPath())
+            && $this->builder->file()->getSize() !== 0;
     }
 
     /**
