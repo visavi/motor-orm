@@ -551,7 +551,12 @@ abstract class Builder
     {
         $affectedRows = 0;
         $this->filtering();
-        $ids = array_column($this->mapper($this->iterator), $this->primary, $this->primary);
+
+        if ($this->attr) {
+            $ids = [$this->attr[$this->primary] => $this->attr[$this->primary]];
+        } else {
+            $ids = array_column($this->mapper($this->iterator), $this->primary, $this->primary);
+        }
 
         $this->process(function (&$current) use ($ids, &$affectedRows) {
             if (isset($ids[$current[0]])) {

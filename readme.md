@@ -155,8 +155,14 @@ $test->save();
 $testModel = TestModel::query()->find(17);
 $affectedLines = $testModel->update(['text' => 'Новый текст']);
 
-# Delete strings
+# Delete records
 TestModel::query()->where('name', 'Миша')->delete();
+
+# Delete records
+$records = TestModel::query()->get();
+foreach($records as $record) {
+    $record->delete();
+}
 
 # Truncate file
 TestModel::query()->truncate();
