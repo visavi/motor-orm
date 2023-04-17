@@ -15,5 +15,5 @@ use MotorORM\Builder;
  */
 class Test extends Builder
 {
-    public string $filePath = __DIR__ . '/../../tests/data/test.csv';
+    public string $table = __DIR__ . '/../../tests/data/test.csv';
 }

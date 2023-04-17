@@ -12,7 +12,7 @@ use MotorORM\Builder;
  */
 class Test2 extends Builder
 {
-    public string $filePath = __DIR__ . '/../../tests/data/test2.csv';
+    public string $table = __DIR__ . '/../../tests/data/test2.csv';
 
     /**
      * The attributes that should be cast.

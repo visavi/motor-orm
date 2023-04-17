@@ -76,7 +76,7 @@ use MotorORM\Builder;
 
 class TestModel extends Builder
 {
-    public string $filePath = __DIR__ . '/test.csv';
+    public string $table = __DIR__ . '/test.csv';
 }
 
 # Find by primary key

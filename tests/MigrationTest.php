@@ -4,6 +4,7 @@ namespace MotorORM\Tests;
 
 use MotorORM\Migration;
 use MotorOrm\Tests\Models\Test4;
+use MotorORM\Tests\Models\Test5;
 
 /**
  * @coversDefaultClass \MotorORM\Migration
@@ -11,13 +12,15 @@ use MotorOrm\Tests\Models\Test4;
 final class MigrationTest extends TestCase
 {
     /**
-     * Create
-     * @covers ::create()
+     * Create column
+     * @covers ::changeTable()
      */
-    public function testCreate(): void
+    public function testCreateColumn(): void
     {
         $migration = new Migration(new Test4());
-        $migration->column('column4')->create();
+        $migration->changeTable(function (Migration $table) {
+            $table->create('column4');
+        });
 
         $headers = Test4::query()->headers();
         $this->assertIsArray($headers);
@@ -25,17 +28,21 @@ final class MigrationTest extends TestCase
         $this->assertContains('column4', $headers);
         $this->assertSame($headers, ['column1', 'column2',  'column3', 'column4']);
 
-        $migration->column('column4')->delete();
+        $migration->changeTable(function (Migration $table) {
+            $table->delete('column4');
+        });
     }
 
     /**
-     * Create after column
-     * @covers ::create()
+     * Create column after column
+     * @covers ::changeTable()
      */
-    public function testCreateAfter(): void
+    public function testCreateColumnAfter(): void
     {
         $migration = new Migration(new Test4());
-        $migration->column('column4')->after('column1')->create();
+        $migration->changeTable(function (Migration $table) {
+            $table->create('column4')->after('column1');
+        });
 
         $headers = Test4::query()->headers();
         $this->assertIsArray($headers);
@@ -43,17 +50,21 @@ final class MigrationTest extends TestCase
         $this->assertContains('column4', $headers);
         $this->assertSame($headers, ['column1', 'column4', 'column2', 'column3']);
 
-        $migration->column('column4')->delete();
+        $migration->changeTable(function (Migration $table) {
+            $table->delete('column4');
+        });
     }
 
     /**
-     * Create default column
-     * @covers ::create()
+     * Create column default column
+     * @covers ::changeTable()
      */
-    public function testCreateDefault(): void
+    public function testCreateColumnDefault(): void
     {
         $migration = new Migration(new Test4());
-        $migration->column('column4')->default('xxx')->after('column2')->create();
+        $migration->changeTable(function (Migration $table) {
+            $table->create('column4')->default('xxx')->after('column2');
+        });
 
         $headers = Test4::query()->headers();
         $this->assertIsArray($headers);
@@ -65,17 +76,21 @@ final class MigrationTest extends TestCase
         $this->assertNotNull($find->column4);
         $this->assertEquals('xxx', $find->column4);
 
-        $migration->column('column4')->delete();
+        $migration->changeTable(function (Migration $table) {
+            $table->delete('column4');
+        });
     }
 
     /**
-     * Rename
-     * @covers ::rename()
+     * Rename column
+     * @covers ::changeTable()
      */
-    public function testRename(): void
+    public function testRenameColumn(): void
     {
         $migration = new Migration(new Test4());
-        $migration->column('column3')->to('column4')->rename();
+        $migration->changeTable(function (Migration $table) {
+            $table->rename('column3', 'column4');
+        });
 
         $headers = Test4::query()->headers();
         $this->assertIsArray($headers);
@@ -83,17 +98,21 @@ final class MigrationTest extends TestCase
         $this->assertContains('column4', $headers);
         $this->assertSame($headers, ['column1', 'column2',  'column4']);
 
-        $migration->column('column4')->to('column3')->rename();
+        $migration->changeTable(function (Migration $table) {
+            $table->rename('column4', 'column3');
+        });
     }
 
     /**
-     * Delete
-     * @covers ::delete()
+     * Delete column
+     * @covers ::changeTable()
      */
-    public function testDelete(): void
+    public function testDeleteColumn(): void
     {
         $migration = new Migration(new Test4());
-        $migration->column('column3')->delete();
+        $migration->changeTable(function (Migration $table) {
+            $table->delete('column3');
+        });
 
         $headers = Test4::query()->headers();
         $this->assertIsArray($headers);
@@ -101,6 +120,40 @@ final class MigrationTest extends TestCase
         $this->assertNotContains('column3', $headers);
         $this->assertSame($headers, ['column1', 'column2']);
 
-        $migration->column('column3')->default('value')->create();
+        $migration->changeTable(function (Migration $table) {
+            $table->create('column3')->default('value');
+        });
+    }
+
+    /**
+     * Create table
+     * @covers ::createTable()
+     */
+    public function testCreateTable(): void
+    {
+        $migration = new Migration(new Test5());
+        $migration->createTable(function (Migration $table) {
+            $table->create('column1');
+            $table->create('column2');
+            $table->create('column3');
+            $table->create('column4');
+        });
+
+        $headers = Test5::query()->headers();
+        $this->assertIsArray($headers);
+        $this->assertCount(4, $headers);
+        $this->assertSame($headers, ['column1', 'column2',  'column3', 'column4']);
+    }
+
+    /**
+     * Delete table
+     * @covers ::deleteTable()
+     */
+    public function testDeleteTable(): void
+    {
+        $migration = new Migration(new Test5());
+        $migration->deleteTable();
+
+        $this->assertFalse($migration->hasTable());
     }
 }

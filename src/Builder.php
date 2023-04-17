@@ -22,7 +22,7 @@ use UnexpectedValueException;
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
- * @version 3.0
+ * @version 3.x
  */
 abstract class Builder
 {
@@ -35,7 +35,8 @@ abstract class Builder
     ];
 
     protected string $table;
-    protected string $tableDir;
+    protected ?string $tableDir = null;
+
     protected int $offset = 0;
     protected int $limit = -1;
     protected array $headers;
@@ -51,8 +52,8 @@ abstract class Builder
     protected array $where = [];
     protected array $casts = [];
 
-    protected ?string $paginateName = null;
     protected ?string $paginateView = null;
+    protected ?string $paginateName = null;
 
     /**
      * Begin querying the model.
@@ -91,7 +92,8 @@ abstract class Builder
      */
     public function file(): SplFileObject
     {
-        $filePath = sprintf('%s/%s.csv', $this->tableDir, $this->table);
+        $filePath = $this->tableDir ? $this->tableDir . '/' . $this->table : $this->table;
+
         $file = new SplFileObject($filePath, 'a+');
         $file->setFlags(
             SplFileObject::READ_AHEAD |
@@ -110,7 +112,7 @@ abstract class Builder
      */
     public function getTable(): string
     {
-        return $this->table;
+        return pathinfo($this->table, PATHINFO_FILENAME);
     }
 
     /**
@@ -806,7 +808,7 @@ abstract class Builder
                 $where['and'][0] = [
                     'field'     => $relate['foreignKey'],
                     'condition' => 'in',
-                    'value'     => $relations[$with],
+                    'value'     => $relations[$with] ?? null,
                 ];
 
                 $relationData = $relate['model']->query()->setWhere($where)->get();

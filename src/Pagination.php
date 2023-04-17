@@ -23,11 +23,11 @@ class Pagination
     public array $appends = [];
 
     public function __construct(
-        protected ?string $view = null,
+        protected ?string $viewPath = null,
         protected ?string $pageName = null,
     ) {
+        $this->viewPath = $viewPath ?: __DIR__ . '/views/bootstrap5.php';
         $this->pageName = $pageName ?: 'page';
-        $this->view = $view ?: __DIR__ . '/views/bootstrap5.php';
     }
 
     /**
@@ -162,7 +162,7 @@ class Pagination
     {
         ob_start();
         $pages = $this->items();
-        include($this->view);
+        include($this->viewPath);
 
         return ob_get_clean();
     }
@@ -176,7 +176,7 @@ class Pagination
      */
     public function setView(string $view): void
     {
-        $this->view = $view;
+        $this->viewPath = $view;
     }
 
     /**
