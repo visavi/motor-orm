@@ -16,7 +16,7 @@ use Traversable;
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
- * @version 1.0
+ * @version 2.0
  */
 class Collection implements Countable, IteratorAggregate, ArrayAccess
 {
@@ -24,135 +24,268 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      * Initializes a new collection.
      */
     public function __construct(
-        protected array $elements = [],
-    ) {
-        $this->elements = array_values($elements);
-    }
-
-    /**
-     * Creates a new instance from the specified elements.
-     *
-     * This method is provided for derived classes to specify how a new
-     * instance should be created when constructor semantics have changed.
-     *
-     * @param array $elements Elements.
-     *
-     * @return static
-     */
-    protected function createFrom(array $elements): static
-    {
-        return new static($elements);
-    }
+        protected array $items = [],
+    ) {}
 
     /**
      *  Gets a native PHP array representation of the collection.
      *
      * @return array
      */
-    public function toArray(): array
+    public function all(): array
     {
-        return $this->elements;
+        return $this->items;
     }
 
     /**
-     * Sets the internal iterator to the first element in the collection and returns this element.
+     * Gets the item at the specified key/index.
+     *
+     * @param string|int $key
+     * @param mixed $default
+     *
+     * @return mixed|null
+     */
+    public function get(string|int $key, mixed $default = null): mixed
+    {
+        return $this->items[$key] ?? $default;
+    }
+
+    /**
+     * Sets the internal iterator to the first item in the collection and returns this item.
      *
      * @return false|mixed
      */
     public function first(): mixed
     {
-        return reset($this->elements);
+        return reset($this->items);
     }
 
     /**
-     * Sets the internal iterator to the last element in the collection and returns this element.
+     * Sets the internal iterator to the last item in the collection and returns this item.
      *
      * @return false|mixed
      */
     public function last(): mixed
     {
-        return end($this->elements);
+        return end($this->items);
     }
 
     /**
-     * Gets the key/index of the element at the current iterator position.
-     *
-     * @return int|string|null
-     */
-    public function key(): int|string|null
-    {
-        return key($this->elements);
-    }
-
-    /**
-     * Moves the internal iterator position to the next element and returns this element.
-     *
-     * @return false|mixed
-     */
-    public function next(): mixed
-    {
-        return next($this->elements);
-    }
-
-    /**
-     * Gets the element of the collection at the current iterator position.
-     *
-     * @return false|mixed
-     */
-    public function current(): mixed
-    {
-        return current($this->elements);
-    }
-
-    /**
-     * Removes the element at the specified index from the collection.
+     * Removes and returns the item at the specified index from the collection
      *
      * @param string|int $key
      *
      * @return mixed|null
      */
-    public function remove(string|int $key): mixed
+    public function pull(string|int $key): mixed
     {
-        if (! isset($this->elements[$key]) && ! array_key_exists($key, $this->elements)) {
+        if (! array_key_exists($key, $this->items)) {
             return null;
         }
 
-        $removed = $this->elements[$key];
-        unset($this->elements[$key]);
+        $removed = $this->items[$key];
+        unset($this->items[$key]);
 
         return $removed;
     }
 
     /**
-     * Removes the specified element from the collection, if it is found.
+     * Removes the item at the specified index from the collection
      *
-     * @param mixed $element
+     * @param string|int $key
+     *
+     * @return void
+     */
+    public function forget(string|int $key): void
+    {
+        $this->pull($key);
+    }
+
+    /**
+     * Gets all keys/indices of the collection.
+     *
+     * @return array
+     */
+    public function keys(): array
+    {
+        return array_keys($this->items);
+    }
+
+    /**
+     * Gets all values of the collection.
+     *
+     * @return array
+     */
+    public function values(): array
+    {
+        return array_values($this->items);
+    }
+
+    /**
+     * Checks whether the collection contains an item with the specified key/index.
+     *
+     * @param string|int $key
      *
      * @return bool
      */
-    public function removeElement(mixed $element): bool
+    public function has(string|int $key): bool
     {
-        $key = array_search($element, $this->elements, true);
+        return array_key_exists($key, $this->items);
+    }
 
-        if ($key === false) {
-            return false;
-        }
+    /**
+     * Checks whether an item is contained in the collection.
+     * This is an O(n) operation, where n is the size of the collection.
+     *
+     * @param mixed $item
+     *
+     * @return bool
+     */
+    public function contains(mixed $item): bool
+    {
+        return in_array($item, $this->items, true);
+    }
 
-        unset($this->elements[$key]);
+    /**
+     * The search method searches the collection for the given value and returns its key if found.
+     *
+     * @param mixed $item
+     * @param bool $strict
+     *
+     * @return bool|int|string
+     */
+    public function search(mixed $item, bool $strict = false): bool|int|string
+    {
+        return array_search($item, $this->items, $strict);
+    }
+
+    /**
+     * @return int
+     */
+    public function count(): int
+    {
+        return count($this->items);
+    }
+
+    /**
+     * Sets an item in the collection at the specified key/index.
+     *
+     * @param string|int $key
+     * @param mixed      $value
+     *
+     * @return void
+     */
+    public function put(string|int $key, mixed $value): void
+    {
+        $this->items[$key] = $value;
+    }
+
+    /**
+     * Adds an item at the end of the collection.
+     *
+     * @param mixed $item
+     *
+     * @return bool
+     */
+    public function push(mixed $item): bool
+    {
+        $this->items[] = $item;
 
         return true;
     }
 
     /**
-     * Required by interface ArrayAccess.
-     *
-     * @param $offset
+     * Checks whether the collection is empty (contains no items).
      *
      * @return bool
      */
-    public function offsetExists($offset): bool
+    public function isEmpty(): bool
     {
-        return $this->containsKey($offset);
+        return empty($this->items);
+    }
+
+    /**
+     * Checks whether the collection is not empty.
+     *
+     * @return bool
+     */
+    public function isNotEmpty(): bool
+    {
+        return ! empty($this->items);
+    }
+
+    /**
+     * Clears the collection, removing all items.
+     *
+     * @return void
+     */
+    public function clear(): void
+    {
+        $this->items = [];
+    }
+
+    /**
+     * Extracts a slice of $length items starting at position $offset from the Collection.
+     *
+     * If $length is null it returns all items from $offset to the end of the Collection.
+     * Keys have to be preserved by this method. Calling this method will only return the
+     * selected slice and NOT change the items contained in the collection slice is called on.
+     *
+     * @param int      $offset
+     * @param int|null $length
+     *
+     * @return array
+     */
+    public function slice(int $offset, ?int $length = null): array
+    {
+        return array_slice($this->items, $offset, $length, true);
+    }
+
+    /**
+     * Pluck
+     *
+     * @param string      $value
+     * @param string|null $key
+     *
+     * @return array
+     */
+    public function pluck(string $value, ?string $key = null): array
+    {
+        if ($key === null) {
+            return array_column($this->items, $value);
+        }
+
+        return array_column($this->items, $value, $key);
+    }
+
+    /**
+     * Gets the key/index of the item at the current iterator position.
+     *
+     * @return int|string|null
+     */
+    public function key(): int|string|null
+    {
+        return key($this->items);
+    }
+
+    /**
+     * Moves the internal iterator position to the next item and returns this item.
+     *
+     * @return false|mixed
+     */
+    public function next(): mixed
+    {
+        return next($this->items);
+    }
+
+    /**
+     * Gets the item of the collection at the current iterator position.
+     *
+     * @return false|mixed
+     */
+    public function current(): mixed
+    {
+        return current($this->items);
     }
 
     /**
@@ -178,12 +311,24 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
     public function offsetSet($offset, $value): void
     {
         if (! isset($offset)) {
-            $this->add($value);
+            $this->push($value);
 
             return;
         }
 
-        $this->set($offset, $value);
+        $this->put($offset, $value);
+    }
+
+    /**
+     * Required by interface ArrayAccess.
+     *
+     * @param $offset
+     *
+     * @return bool
+     */
+    public function offsetExists($offset): bool
+    {
+        return $this->has($offset);
     }
 
     /**
@@ -195,129 +340,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      */
     public function offsetUnset($offset): void
     {
-        $this->remove($offset);
-    }
-
-    /**
-     * Checks whether the collection contains an element with the specified key/index.
-     *
-     * @param string|int $key
-     *
-     * @return bool
-     */
-    public function containsKey(string|int $key): bool
-    {
-        return isset($this->elements[$key]) || array_key_exists($key, $this->elements);
-    }
-
-    /**
-     * Checks whether an element is contained in the collection.
-     * This is an O(n) operation, where n is the size of the collection.
-     *
-     * @param mixed $element
-     *
-     * @return bool
-     */
-    public function contains(mixed $element): bool
-    {
-        return in_array($element, $this->elements, true);
-    }
-
-    /**
-     * @param $element
-     *
-     * @return false|int|string
-     */
-    public function indexOf($element): bool|int|string
-    {
-        return array_search($element, $this->elements, true);
-    }
-
-    /**
-     * Gets the element at the specified key/index.
-     *
-     * @param string|int $key
-     *
-     * @return mixed|null
-     */
-    public function get(string|int $key): mixed
-    {
-        return $this->elements[$key] ?? null;
-    }
-
-    /**
-     * Gets all keys/indices of the collection.
-     *
-     * @return array
-     */
-    public function getKeys(): array
-    {
-        return array_keys($this->elements);
-    }
-
-    /**
-     * Gets all values of the collection.
-     *
-     * @return array
-     */
-    public function getValues(): array
-    {
-        return array_values($this->elements);
-    }
-
-    /**
-     * @return int
-     */
-    public function count(): int
-    {
-        return count($this->elements);
-    }
-
-    /**
-     * Sets an element in the collection at the specified key/index.
-     *
-     * @param string|int $key
-     * @param mixed      $value
-     *
-     * @return void
-     */
-    public function set(string|int $key, mixed $value): void
-    {
-        $this->elements[$key] = $value;
-    }
-
-    /**
-     * Adds an element at the end of the collection.
-     *
-     * @param mixed $element
-     *
-     * @return bool
-     */
-    public function add(mixed $element): bool
-    {
-        $this->elements[] = $element;
-
-        return true;
-    }
-
-    /**
-     * Checks whether the collection is empty (contains no elements).
-     *
-     * @return bool
-     */
-    public function isEmpty(): bool
-    {
-        return empty($this->elements);
-    }
-
-    /**
-     * Checks whether the collection is not empty.
-     *
-     * @return bool
-     */
-    public function isNotEmpty(): bool
-    {
-        return ! empty($this->elements);
+        $this->forget($offset);
     }
 
     /**
@@ -325,7 +348,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      */
     public function getIterator(): Traversable
     {
-        return new ArrayIterator($this->elements);
+        return new ArrayIterator($this->items);
     }
 
     /**
@@ -336,49 +359,5 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
     public function __toString()
     {
         return self::class . '@' . spl_object_hash($this);
-    }
-
-    /**
-     * Clears the collection, removing all elements.
-     *
-     * @return void
-     */
-    public function clear(): void
-    {
-        $this->elements = [];
-    }
-
-    /**
-     * Extracts a slice of $length elements starting at position $offset from the Collection.
-     *
-     * If $length is null it returns all elements from $offset to the end of the Collection.
-     * Keys have to be preserved by this method. Calling this method will only return the
-     * selected slice and NOT change the elements contained in the collection slice is called on.
-     *
-     * @param int      $offset
-     * @param int|null $length
-     *
-     * @return array
-     */
-    public function slice($offset, $length = null)
-    {
-        return array_slice($this->elements, $offset, $length, true);
-    }
-
-    /**
-     * Pluck
-     *
-     * @param string      $value
-     * @param string|null $key
-     *
-     * @return array
-     */
-    public function pluck(string $value, ?string $key = null)
-    {
-        if ($key === null) {
-            return array_column($this->elements, $value);
-        }
-
-        return array_column($this->elements, $value, $key);
     }
 }
