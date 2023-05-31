@@ -10,7 +10,7 @@ namespace MotorORM;
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
- * @version 1.0
+ * @version 2.0
  */
 class CollectionPaginate extends Collection
 {
@@ -18,10 +18,10 @@ class CollectionPaginate extends Collection
      * Initializes a new collection
      */
     public function __construct(
-        protected array      $elements,
+        protected array      $items,
         protected Pagination $paginator,
     ) {
-        parent::__construct($this->elements);
+        parent::__construct($this->items);
     }
 
     /**
@@ -39,7 +39,7 @@ class CollectionPaginate extends Collection
      *
      * @return int
      */
-    public function totalItems(): int
+    public function total(): int
     {
         return $this->paginator->total;
     }
