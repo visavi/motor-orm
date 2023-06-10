@@ -234,11 +234,11 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      * @param int      $offset
      * @param int|null $length
      *
-     * @return array
+     * @return self
      */
-    public function slice(int $offset, ?int $length = null): array
+    public function slice(int $offset, ?int $length = null): self
     {
-        return array_slice($this->items, $offset, $length, true);
+        return new self(array_slice($this->items, $offset, $length, true));
     }
 
     /**
@@ -247,15 +247,31 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      * @param string      $value
      * @param string|null $key
      *
-     * @return array
+     * @return self
      */
-    public function pluck(string $value, ?string $key = null): array
+    public function pluck(string $value, ?string $key = null): self
     {
         if ($key === null) {
-            return array_column($this->items, $value);
+            return new self(array_column($this->items, $value));
         }
 
-        return array_column($this->items, $value, $key);
+        return new self(array_column($this->items, $value, $key));
+    }
+
+    /**
+     * Filter
+     *
+     * @param callable|null $callback
+     *
+     * @return self
+     */
+    public function filter(callable $callback = null): self
+    {
+        if ($callback) {
+            return new self(array_filter($this->items, $callback, ARRAY_FILTER_USE_BOTH));
+        }
+
+        return new self(array_filter($this->items));
     }
 
     /**
