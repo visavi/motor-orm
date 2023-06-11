@@ -53,21 +53,41 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
     /**
      * Sets the internal iterator to the first item in the collection and returns this item.
      *
-     * @return false|mixed
+     * @param callable|null $callback
+     *
+     * @return mixed
      */
-    public function first(): mixed
+    public function first(callable $callback = null): mixed
     {
-        return reset($this->items);
+        if (is_null($callback)) {
+            return empty($this->items) ? null : reset($this->items);
+        }
+
+        foreach ($this->items as $key => $value) {
+            if ($callback($value, $key)) {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     /**
      * Sets the internal iterator to the last item in the collection and returns this item.
      *
-     * @return false|mixed
+     * @param callable|null $callback
+     *
+     * @return mixed
      */
-    public function last(): mixed
+    public function last(callable $callback = null): mixed
     {
-        return end($this->items);
+        if (is_null($callback)) {
+            return empty($this->items) ? null : end($this->items);
+        }
+
+        $this->items = array_reverse($this->items, true);
+
+        return $this->first($callback);
     }
 
     /**
@@ -137,26 +157,41 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      * Checks whether an item is contained in the collection.
      * This is an O(n) operation, where n is the size of the collection.
      *
-     * @param mixed $item
+     * @param mixed $value
+     * @param bool $strict
      *
      * @return bool
      */
-    public function contains(mixed $item): bool
+    public function contains(mixed $value, bool $strict = false): bool
     {
-        return in_array($item, $this->items, true);
+        if (is_callable($value)) {
+            return $this->first($value) !== null;
+        }
+
+        return in_array($value, $this->items, $strict);
     }
 
     /**
      * The search method searches the collection for the given value and returns its key if found.
      *
-     * @param mixed $item
+     * @param mixed $value
      * @param bool $strict
      *
      * @return bool|int|string
      */
-    public function search(mixed $item, bool $strict = false): bool|int|string
+    public function search(mixed $value, bool $strict = false): bool|int|string
     {
-        return array_search($item, $this->items, $strict);
+        if (! is_callable($value)) {
+            return array_search($value, $this->items, $strict);
+        }
+
+        foreach ($this->items as $key => $item) {
+            if ($value($item, $key)) {
+                return $key;
+            }
+        }
+
+        return false;
     }
 
     /**
