@@ -1154,6 +1154,19 @@ abstract class Builder
     }
 
     /**
+     * @return array
+     */
+    public function toArray(): array
+    {
+        $values = [];
+        foreach ($this->attr as $name => $var){
+            $values[$name] = is_object($var) ? $var->toArray() : $var;
+        }
+
+        return $values;
+    }
+
+    /**
      * Destructor
      */
     public function __destruct()
