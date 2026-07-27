@@ -14,6 +14,7 @@ use LimitIterator;
 use RuntimeException;
 use SplFileObject;
 use SplTempFileObject;
+use stdClass;
 use UnexpectedValueException;
 
 /**
@@ -54,6 +55,8 @@ abstract class Builder
     protected array $orders = [];
     protected array $attr = [];
     protected array $relations = [];
+    /** Every record of the same result, shared so relations load in one query */
+    protected ?stdClass $siblings = null;
     protected array $relate = [];
     protected array $with = [];
     protected array $where = [];
@@ -351,6 +354,11 @@ abstract class Builder
 
         $this->attr = $this->combiner()($this->iterator->current());
 
+        /* A single record has no siblings, its relations load for itself */
+        foreach ($this->with as $with) {
+            $this->loadRelation([$this], $with);
+        }
+
         return $this;
     }
 
@@ -627,6 +635,18 @@ abstract class Builder
     }
 
     /**
+     * Whether the relation has already been loaded on this record
+     *
+     * @param string $relation
+     *
+     * @return bool
+     */
+    public function relationLoaded(string $relation): bool
+    {
+        return array_key_exists($relation, $this->relations);
+    }
+
+    /**
      * Apply the callback if the given “value” is (or resolves to) truthy.
      *
      * @param mixed         $value
@@ -821,52 +841,80 @@ abstract class Builder
             $rows[] = $clone;
         }
 
-        // Parse relation
-        if ($rows && $this->with) {
-            foreach ($this->with as $with) {
-                $relation = $this->$with();
-                $relate   = $relation->relate;
-                $localIds = $this->localIds($rows, $relate['localKey']);
+        /*
+         * Every record keeps a reference to the whole result, so that
+         * touching a relation later can load it for all of them at once
+         * instead of scanning the related table once per record
+         */
+        if (count($rows) > 1) {
+            $siblings = new stdClass();
+            $siblings->rows = $rows;
 
-                if ($relate['type'] === 'hasManyThrough') {
-                    $this->eagerLoadThrough($rows, $with, $relate, $localIds);
+            foreach ($rows as $row) {
+                $row->siblings = $siblings;
+            }
+        }
 
-                    continue;
-                }
-
-                $where = $relation->where;
-                $where['and'][0] = [
-                    'field'     => $relate['foreignKey'],
-                    'condition' => 'in',
-                    'value'     => $localIds,
-                ];
-
-                /** @var self $related */
-                $related      = $relate['model'];
-                $relationData = $related::query()->setWhere($where)->get();
-
-                $foreignKey = $relate['foreignKey'];
-                $relationByKey = [];
-                foreach ($relationData as $data) {
-                    if ($relate['type'] === 'hasOne') {
-                        $relationByKey[$data->$foreignKey] ??= $data;
-                    } else {
-                        $relationByKey[$data->$foreignKey][] = $data;
-                    }
-                }
-
-                foreach ($rows as $row) {
-                    $localId = $row->attr[$relate['localKey']] ?? null;
-                    $related = $relationByKey[$localId] ?? null;
-
-                    $row->relations[$with] = $relate['type'] === 'hasOne'
-                        ? $related
-                        : new Collection($related ?? []);
-                }
+        foreach ($this->with as $with) {
+            if ($rows) {
+                $this->loadRelation($rows, $with);
             }
         }
 
         return $rows;
+    }
+
+    /**
+     * Load a relation for the given records with a single query
+     *
+     * @param array  $rows
+     * @param string $with
+     *
+     * @return void
+     */
+    private function loadRelation(array $rows, string $with): void
+    {
+        $relation = $this->$with();
+        $relate   = $relation->relate;
+        $localIds = $this->localIds($rows, $relate['localKey']);
+
+        if ($relate['type'] === 'hasManyThrough') {
+            $this->eagerLoadThrough($rows, $with, $relate, $localIds);
+
+            return;
+        }
+
+        $where = $relation->where;
+        $where['and'][0] = [
+            'field'     => $relate['foreignKey'],
+            'condition' => 'in',
+            'value'     => $localIds,
+        ];
+
+        /** @var self $related */
+        $related      = $relate['model'];
+        $class        = $related::class;
+        $relationData = $localIds ? $related::query()->setWhere($where)->get() : [];
+
+        $foreignKey    = $relate['foreignKey'];
+        $relationByKey = [];
+        foreach ($relationData as $data) {
+            if ($relate['type'] === 'hasOne') {
+                $relationByKey[$data->$foreignKey] ??= $data;
+            } else {
+                $relationByKey[$data->$foreignKey][] = $data;
+            }
+        }
+
+        foreach ($rows as $row) {
+            $localId = $row->attr[$relate['localKey']] ?? null;
+            $found   = $relationByKey[$localId] ?? null;
+
+            /* A missing hasOne gives an empty model, never null */
+            $row->relations[$with] = $relate['type'] === 'hasOne'
+                ? $found ?? new $class()
+                : new Collection($found ?? []);
+        }
     }
 
     /**
@@ -1301,16 +1349,11 @@ abstract class Builder
     public function __get(string $field)
     {
         if (! array_key_exists($field, $this->attr) && method_exists($this, $field)) {
-            if (isset($this->relations[$field])) {
-                return $this->relations[$field];
+            if (! array_key_exists($field, $this->relations)) {
+                $this->loadRelation($this->siblings->rows ?? [$this], $field);
             }
 
-            $relation = $this->$field();
-            $class    = $relation::class;
-
-            return $relation->relate['type'] === 'hasOne'
-                ? $relation->first() ?? new $class()
-                : $relation->get();
+            return $this->relations[$field];
         }
 
         return $this->attr[$field] ?? null;

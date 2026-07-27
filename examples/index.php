@@ -127,7 +127,12 @@ $show(User::query()->find(1)->stories);
 $title('Связь hasManyThrough: теги истории');
 $show(Story::query()->find(1)->tags);
 
-$title('Жадная загрузка with');
+$title('Связь в цикле без with, файл читается один раз на всю выборку');
+foreach (Story::query()->get() as $story) {
+    printf('%s — автор %s%s', $story->title, $story->user->login, $eol);
+}
+
+$title('Жадная загрузка with, тот же результат загруженный заранее');
 foreach (Story::query()->with(['user', 'tags'])->get() as $story) {
     printf(
         '%s — автор %s, теги: %s%s',

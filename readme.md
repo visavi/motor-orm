@@ -1,311 +1,309 @@
 # Motor ORM
 
-Данный скрипт предоставляет ООП подход для работы текстовыми данными сохраненными в файловой системе
+An object oriented way to work with text data stored in the file system.
 
-Структура данных CSV совместима, но с некоторыми изменения для более быстрой работы
+The data format is CSV compatible, with a few deviations that make reading faster.
 
-## Возможности
+[Русская версия](readme.ru.md)
 
-### Builder
-- Поиск по уникальному ключу
-- Поиск по любым заданным условиям
-- Возврат структуры файла
-- Возврат количества записей в файле
-- Возврат информации о существовании записи
-- Сортировка строк
-- Запись строки в файл с генерацией автоинкрементного ключа
-- Обновление записей по любым условиям
-- Удаление записей по любым условиям
-- Приведение типов (Casts)
-- Scope
-- Очистка файла
-- Жадная загрузка
-- Связь один к одному
-- Связь один ко многим
-- Связь многие ко многим
+## Requirements
 
+- PHP 8.0 or newer
+- `ext-mbstring`
 
-### Collection
-- Преобразование коллекции в массив
-- Получение первой записи
-- Получение последней записи
-- Получение количества записей в коллекции
-- Добавление записи в коллекцию
-- Удаление записи из коллекции
-- Установка значения в коллекции
-- Проверка коллекции на пустоту
-- Очистка коллекции
-- Срез коллекции
-- Обход с получением ключа и значения из коллекции
+## Installation
 
-### Collection Paginate
-- Расширяет класс Collection
-- Получение текущей странице
-- Получение количества страниц
-- Получение массива со страницами
+```bash
+composer require visavi/motor-orm
+```
 
-### Migration
-- [Создание таблицы](#Создание-таблицы)
-- [Удаление таблицы](#Удаление-таблицы)
-- [Создание колонок](#Создание-колонок)
-- [Переименовывание колонок](#Переименовывание-колонок)
-- [Удаление колонок](#Удаление-колонок)
-- [Проверка существования](#Проверка-существования-таблицыколонки)
+## Quick start
 
-Работы с изменениями в файле, в том числе и вставка выполняется с блокировкой файла для защиты от случайного удаления данных в случае если несколько пользователей одновременно пишут в файл
-
-Первых столбец в файле считается уникальным
-
-Может быть строковым и числовым
-
-Если столбец строковой, то все вставки должны быть с уже заданным уникальным ключом
-
-Если столбец числовой, то уникальный ключ будет генерироваться автоматически
-
-## Запросы
-
-Все запросы проводятся через модели в котором должен быть указан путь к файлу с данными
-В самих моделях могут быть реализованы дополнительные методы
-
-## Примеры
+Every query goes through a model that points at a data file. Models may carry extra
+methods of their own — casts, scopes and relations.
 
 ```php
-
-# Create class
 use MotorORM\Builder;
 
-class TestModel extends Builder
+class Article extends Builder
 {
-    public string $table = __DIR__ . '/test.csv';
+    public string $table = __DIR__ . '/data/articles.csv';
 }
 
-# Find by primary key
-TestModel::query()->find(1);
+$article = Article::query()->find(1);
 
-# Find by name limit 1
-TestModel::query()->where('name', 'Миша')->limit(1)->get();
+echo $article->title;
+```
 
-# Find by name and first 1
-TestModel::query()->where('name', 'Миша')->first();
+The first column of a file is the primary key. It may be numeric or a string.
 
-# Find by name and title
-TestModel::query()->where('name', 'Миша')->where('title', 'Заголовок10')->get();
+A numeric key is generated automatically on insert. A string key must always be
+passed explicitly, there is nothing to continue from.
 
-# Get from condition
-TestModel::query()->where('time', '>=', 1231231235)->get();
+Every write, including inserts, locks the file, so that concurrent writers cannot
+lose each other's data.
 
-# Get by condition in
-TestModel::query()->whereIn('id', [1, 3, 4, 7])->get();
+## Contents
 
-# Get by condition not in
-TestModel::query()->whereNotIn('id', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])->get();
+- [Reading](#reading)
+- [Conditions](#conditions)
+- [Partial match (Like)](#partial-match-like)
+- [Loose match (Lax)](#loose-match-lax)
+- [Sorting, limit and offset](#sorting-limit-and-offset)
+- [Writing](#writing)
+- [Casts](#casts)
+- [Scopes](#scopes)
+- [Conditional clauses](#conditional-clauses)
+- [Relations](#relations)
+- [Loading relations](#loading-relations)
+- [Collection](#collection)
+- [Pagination](#pagination)
+- [Migrations](#migrations)
+- [Development](#development)
 
-# Get records by multiple conditions and pagination
-TestModel::query()
-    ->where(function(Builder $builder) {
-        $builder->where('name', 'Миша');
-        $builder->orWhere(function(Builder $builder) {
-            $builder->where('name', 'Петя');
-            $builder->where('title', '<>', '');
-        });
+## Reading
+
+```php
+# By primary key
+Article::query()->find(1);
+
+# The first match, or null
+Article::query()->where('name', 'Misha')->first();
+
+# Every match as a Collection
+Article::query()->where('name', 'Misha')->get();
+
+# Whether anything matches, stops at the first hit
+Article::query()->where('name', 'Misha')->exists();
+
+# How many records match
+Article::query()->where('time', '>', 1231231234)->count();
+
+# The column names of the file
+Article::query()->headers();
+
+# The record as a plain array
+Article::query()->find(1)->toArray();
+```
+
+`find()` and `first()` return the model or `null`. `get()` always returns a
+[Collection](#collection), empty if nothing matched.
+
+`exists()` and `first()` stop reading at the first match, so they cost almost
+nothing on a record near the top of the file.
+
+## Conditions
+
+```php
+# Equality
+Article::query()->where('name', 'Misha')->get();
+
+# An explicit operator: = != <> > >= < <= like not_like lax
+Article::query()->where('time', '>=', 1231231235)->get();
+
+# Or
+Article::query()->where('id', 1)->orWhere('id', 2)->get();
+
+# In and not in
+Article::query()->whereIn('id', [1, 3, 4, 7])->get();
+Article::query()->whereNotIn('id', range(1, 10))->get();
+```
+
+A closure groups conditions, and groups may be nested:
+
+```php
+Article::query()
+    ->where('name', 'Misha')
+    ->where(function (Builder $query) {
+        $query->where('id', 10)->orWhere('id', 11);
     })
-    ->paginate(10);
+    ->get();
+```
 
-# Get count
-TestModel::query()->where('time', '>', 1231231234)->count();
+Filtering by a column the file does not have throws an `UnexpectedValueException`.
 
-# Get lines 1 - 10
-$lines = TestModel::query()->offset(0)->limit(10)->get();
+## Partial match (Like)
 
-# Get last 10 records
-$lines = TestModel::query()->orderByDesc('created_at')->offset(0)->limit(10)->get();
+```php
+# Starts with hi
+Article::query()->where('tag', 'like', 'hi%')->get();
 
-# Get headers
-TestModel::query()->headers();
+# Ends with hi
+Article::query()->where('tag', 'like', '%hi')->get();
 
-# Get first line
-TestModel::query()->first();
+# Contains hi
+Article::query()->where('tag', 'like', '%hi%')->get();
 
-# Get first 3 lines
-TestModel::query()->limit(3)->get();
+# Same as the query above
+Article::query()->where('tag', 'like', 'hi')->get();
 
-# Get last 3 lines
-TestModel::query()->orderByDesc('created_at')->limit(3)->get();
+# Everything that does not contain hi
+Article::query()->where('tag', 'not_like', '%hi%')->get();
+```
 
-# Find by name and double sort (time desc, id asc)
-Test::query()
-    ->where('name', 'Миша')
+## Loose match (Lax)
+
+Comparison is strict by default. `lax` compares case insensitively:
+
+```php
+# Matches NAME, name, namE, Name and so on
+User::query()->where('login', 'lax', 'name')->first();
+```
+
+## Sorting, limit and offset
+
+```php
+# Ascending, the default
+Article::query()->orderBy('created_at')->get();
+
+# Descending
+Article::query()->orderByDesc('created_at')->get();
+
+# Several columns, applied in the order they were added
+Article::query()
     ->orderByDesc('time')
     ->orderBy('id')
     ->limit(3)
     ->get();
 
-# Create string
-TestModel::query()->create(['name' => 'Миша']);
-
-# Update strings
-TestModel::query()->where('name', 'Миша')->update(['text' => 'Новый текст']);
-
-# Update string
-$test = TestModel::query()->where('name', 'Миша')->first();
-$test->text = 'Новый текст';
-$test->save();
-
-# Update strings
-$testModel = TestModel::query()->find(17);
-$affectedLines = $testModel->update(['text' => 'Новый текст']);
-
-# Delete records
-TestModel::query()->where('name', 'Миша')->delete();
-
-# Delete records
-$records = TestModel::query()->get();
-foreach($records as $record) {
-    $record->delete();
-}
-
-# Truncate file
-TestModel::query()->truncate();
+# Records 11 to 20
+Article::query()->offset(10)->limit(10)->get();
 ```
 
-### Частичный поиск (Like)
-Поиск по частичному совпадению
+Sorting buffers the matching rows in memory, so prefer narrowing the query with
+`where()` before ordering a large file.
+
+## Writing
 
 ```php
-// Строки начинающиеся на hi
-$test = TestModel::query()->where('tag', 'like', 'hi%')->get();
+# Insert, the key is generated when the column is numeric
+Article::query()->create(['name' => 'Misha']);
 
-// Строки заканчивающиеся на hi
-$test = TestModel::query()->where('tag', 'like', '%hi')->get();
+# Insert with an explicit key
+Setting::query()->create(['key' => 'theme', 'value' => 'dark']);
 
-// Строки содержащие hi
-$test = TestModel::query()->where('tag', 'like', '%hi%')->get();
+# Update every matching record, returns how many were changed
+Article::query()->where('name', 'Misha')->update(['text' => 'New text']);
 
-// Этот запрос эквивалентен запросу выше
-$test = TestModel::query()->where('tag', 'like', 'hi')->get();
+# Update a single record
+$article = Article::query()->where('name', 'Misha')->first();
+$article->text = 'New text';
+$article->save();
+
+# Delete every matching record, returns how many were removed
+Article::query()->where('name', 'Misha')->delete();
+
+# Delete a single record
+Article::query()->find(17)->delete();
+
+# Remove every record, keeping the column names
+Article::query()->truncate();
 ```
 
-### Нестрогий поиск (Lax)
-Поиск по нестрогому совпадению
+`create()` throws an `UnexpectedValueException` when the key is already taken, and
+when a string key was omitted and cannot be generated.
 
-При поиске orm использует строгое сравнение, чтобы задействовать нестрогий режим, можно использовать lax
-```php
-// Будут найдено первое совпадение NAME, name, namE, Name итд
-$user = User::query()->where('login', 'lax', 'name')->first();
-```
+## Casts
 
-### Приведение типов (Casts)
-По умолчанию все поля полученные из файла строковые
+Every value read from a file is a string, except for:
 
-За некоторыми исключениями
-- Поле primary key - int
-- Поля заканчивающиеся на _id и _at - int
-- Пустые поля - null
+- the primary key — `int`
+- columns ending in `_id` and `_at` — `int`
+- empty values — `null`
 
-Для переопределения используйте свойство casts
+Declare the `casts` property to override this:
 
 ```php
-class Story extends Model
+class Story extends Builder
 {
     protected array $casts = [
         'rating' => 'int',
         'reads'  => 'int',
         'locked' => 'bool',
+        'meta'   => 'array',
     ];
 }
 ```
-Поддерживаются следующие типы
-- 'int', 'integer' => int
-- 'real', 'float', 'double' => float
-- 'string' => string
-- 'bool', 'boolean' => bool
-- 'object' => json_decode($value, false),
-- 'array' => json_decode($value, true),
 
-### Условия запросов (Scope)
+Supported types:
 
-Каждый scope — это обычный метод, который начинается с префикса scope. Именно по префиксу ORM понимает, что это scope. Внутрь scope передаётся запрос, на который можно навешивать дополнительные условия.
+| Cast | Result |
+|---|---|
+| `int`, `integer` | `int` |
+| `real`, `float`, `double` | `float` |
+| `string` | `string` |
+| `bool`, `boolean` | `bool` |
+| `object` | `json_decode($value, false)` |
+| `array` | `json_decode($value, true)` |
+
+## Scopes
+
+A scope is a method prefixed with `scope`. The prefix is how the ORM tells it apart
+from an ordinary method. The query is passed in, ready for more conditions:
 
 ```php
-class Story extends Model
+class Story extends Builder
 {
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('active', true);
     }
 }
+
+Story::query()->active()->paginate($perPage);
 ```
 
-Использование:
+Parameters declared after `$query` are filled from the call:
 
 ```php
-Story::query()
-    ->active()
-    ->paginate($perPage);
-```
-
-#### Динамические условия
-Некоторые scope зависят от параметров, передающихся в процессе составления запроса. Для этого достаточно описать эти параметры внутри scope после параметра $query:
-
-```php
-class Story extends Model
+class Story extends Builder
 {
     public function scopeOfType(Builder $query, string $type): Builder
     {
         return $query->where('type', $type);
     }
 }
+
+Story::query()->ofType('new')->paginate($perPage);
 ```
 
-Использование:
-```php
-Story::query()
-    ->ofType('new')
-    ->paginate($perPage);
-```
+## Conditional clauses
 
-### Условные выражения (Conditional clauses)
-Иногда вам может понадобиться, чтобы определенный запроса выполнялся на основе другого условия. Например, вы можете захотеть применить where оператор только в том случае, если заданное входное значение присутствует во входящем HTTP-запросе. Вы можете сделать это, используя when метод:
+`when()` applies a closure only if the first argument is truthy, which keeps
+optional filters out of `if` blocks:
 
 ```php
-$active = true;
-
 $stories = Story::query()
-    ->when($active, function (Story $query, $active) {
+    ->when($active, function (Builder $query, $active) {
         $query->where('active', $active);
     })
     ->get();
 ```
 
-Метод when выполняет данное замыкание только тогда, когда первый аргумент равен true. Если первый аргумент равен false, замыкание не будет выполнено.
-
-Вы можете передать другое замыкание в качестве третьего аргумента when метода. Это замыкание будет выполняться только в том случае, если первый аргумент оценивается как false. Чтобы проиллюстрировать, как можно использовать эту функцию, мы будем использовать ее для настройки порядка запросов по умолчанию:
+A third argument runs when the value is falsy:
 
 ```php
-$sortByVotes = 'sort_by_votes';
-
-$users = Story::query()
-    ->when($sortByVotes, function ($query, $sortByVotes) {
-        $query->orderBy('votes');
-    }, function ($query) {
-        $query->orderBy('name');
-    })
+$stories = Story::query()
+    ->when(
+        $sortByVotes,
+        fn (Builder $query) => $query->orderBy('votes'),
+        fn (Builder $query) => $query->orderBy('name'),
+    )
     ->get();
 ```
 
-### Связи (Relations)
-В данный момент поддерживается 3 вида связей
-- hasOne - один к одному
-- hasMany - один ко многим
-- hasManyThrough - многие ко многим
+## Relations
 
-#### Один к одному (hasOne)
-3 параметра, имя класса, внешний и внутренний ключ
+Three kinds are supported. Keys are derived from the class names, and only need to
+be spelled out when the column names differ, or when the relation is inverse.
 
-Внешний и внутренний ключ определяются автоматически, за исключением когда имена полей не совпадают с именем класса или если связь обратная belongsTo (Возможно в будущем это будет реализовано)
+### One to one (hasOne)
+
+Takes a class name, a foreign key and a local key.
+
 ```php
-// Прямая связь
-class User extends Model
+# Direct
+class User extends Builder
 {
     public function story(): Builder
     {
@@ -313,10 +311,9 @@ class User extends Model
     }
 }
 
-// Обратная связь
-class Story extends Model
+# Inverse
+class Story extends Builder
 {
-    
     public function user(): Builder
     {
         return $this->hasOne(User::class, 'id', 'user_id');
@@ -324,12 +321,15 @@ class Story extends Model
 }
 ```
 
-#### Один ко многим (hasMany)
-3 параметра, имя класса, внешний и внутренний ключ
+A missing `hasOne` gives an empty model rather than `null`, so reading a column off
+it is safe.
 
-Внешний и внутренний ключ определяются автоматически, за исключением когда имена полей не совпадают с именем класса
+### One to many (hasMany)
+
+Takes a class name, a foreign key and a local key.
+
 ```php
-class Story extends Model
+class Story extends Builder
 {
     public function comments(): Builder
     {
@@ -338,12 +338,12 @@ class Story extends Model
 }
 ```
 
-#### Многие ко многим (hasManyThrough)
-5 параметров, имя конечного класса, имя промежуточного класса, внешние и внутренние ключи
+### Many to many (hasManyThrough)
 
-Внешние и внутренние ключи определяются автоматически, за исключением когда имена полей не совпадают с именами классов
+Takes the target class, the intermediate class and, optionally, both pairs of keys.
+
 ```php
-class Story extends Model
+class Story extends Builder
 {
     public function tags(): Builder
     {
@@ -352,50 +352,128 @@ class Story extends Model
 }
 ```
 
-### Жадная загрузка (Eager load)
-По умолчанию все связи с ленивой загрузкой (lazy load)
+## Loading relations
 
-Связь не будет загружена до тех пор, пока явно не будет вызвана
-
-Для того чтобы жадно загрузить данные необходимо вызвать метод with и передать имена связей, которые требуется жадно загрузить
+Relations load on access:
 
 ```php
-class StoryRepository implements RepositoryInterface
+$story = Story::query()->find(1);
 
-    public function getStories(int $perPage): CollectionPaginate
-    {
-        return Story::query()
-            ->orderByDesc('locked')
-            ->orderByDesc('created_at')
-            ->with(['user', 'comments'])
-            ->paginate($perPage);
-    }
-}
+echo $story->user->login;
+echo $story->tags->pluck('name')->all();
 ```
 
-Жадная загрузка извлекает данные используя всего несколько запросов. Это позволяет избежать проблемы N + 1.
-
-Представьте, что у вас есть этот код, который находит 10 сообщений, а затем отображает имя автора каждого сообщения.
+**A relation touched on one record loads for every record of the same result.**
+The classic N + 1 never happens, even without asking for it:
 
 ```php
-foreach ($storyRepository->getStories(10) as $story) {
+foreach (Story::query()->limit(10)->get() as $story) {
     echo $story->user->login;
 }
 ```
 
-Без ленивой загрузки при каждой итерации цикла было бы обращение в файловую систему для получения данных, то есть 1 запрос на получение списка постов и 10 на получение пользователей
+The first `$story->user` reads the users of all ten stories with a single pass over
+the file, and the other nine iterations are served from memory. Records fetched on
+their own, through `find()` or `first()`, have no siblings to batch with and simply
+load their own relation.
 
-Жадная загрузка избавляет от этой проблемы, 1 запрос на получение списка постов и 1 на получение пользователей этих постов
+Once loaded, a relation is cached on the record. Ask for it again and you get the
+same objects, not a fresh read.
 
-### Миграции
+**`with()` is optional.** It moves the loading to the query instead of the first
+access, but the number of passes over the file is the same either way, so calling
+it buys no speed. Reach for it when the result is handed to code that should not
+touch the file system at all, or to say out loud which relations a query is for:
 
-Для вызова класса миграции необходимо в конструктор передать нужную нам модель
 ```php
-$migration = new Migration(new Test());
+Story::query()
+    ->orderByDesc('created_at')
+    ->with(['user', 'comments'])
+    ->paginate($perPage);
 ```
 
-#### Создание таблицы
-Создание таблицы, пример создания файла test.csv с пятью полями
+It works on `get()`, `paginate()`, `first()` and `find()` alike.
+
+`relationLoaded()` reports whether a relation is already in memory:
+
+```php
+$story->relationLoaded('user'); // false
+$story->user;
+$story->relationLoaded('user'); // true
+```
+
+## Collection
+
+`get()` returns a `Collection`. It is countable, iterable and accessible as an
+array.
+
+```php
+$articles = Article::query()->get();
+
+$articles->all();                       // the underlying array
+$articles->first();                     // the first item, or null
+$articles->first(fn ($a) => $a->id > 5); // the first match
+$articles->last();                      // the last item, or null
+$articles->count();                     // how many items
+$articles->isEmpty();
+$articles->isNotEmpty();
+
+$articles->get(0, $default);            // an item by key
+$articles->has(0);
+$articles->keys();
+$articles->values();
+
+$articles->pluck('title');              // one column as a Collection
+$articles->pluck('title', 'id');        // the same, keyed by another column
+$articles->keyBy('id');                 // the items themselves, keyed by a column
+$articles->filter(fn ($a) => $a->id > 5);
+$articles->slice(0, 10);
+$articles->contains(fn ($a) => $a->id === 3);
+$articles->search('needle');
+
+$articles->put('key', $value);
+$articles->push($value);
+$articles->pull('key');                 // remove and return
+$articles->forget('key');
+$articles->clear();
+```
+
+`pluck()`, `keyBy()`, `filter()` and `slice()` return a new collection and leave
+the original alone.
+
+`keyBy()` also takes a closure, keeps the last item of a repeated key, and drops
+items that have no such column:
+
+```php
+$articles->keyBy(fn ($a) => 'row' . $a->id);
+```
+
+## Pagination
+
+`paginate()` returns a `CollectionPaginate`, a collection that knows about pages.
+The current page is read from `$_GET['page']`.
+
+```php
+$articles = Article::query()->paginate(10);
+
+foreach ($articles as $article) {
+    echo $article->title;
+}
+
+echo $articles->currentPage();
+echo $articles->total();
+echo $articles->withPath('/articles')->appends(['sort' => 'new'])->links();
+```
+
+## Migrations
+
+Pass the model to the constructor:
+
+```php
+$migration = new Migration(new Article());
+```
+
+### Creating a table
 
 ```php
 $migration->createTable(function (Migration $table) {
@@ -407,71 +485,98 @@ $migration->createTable(function (Migration $table) {
 });
 ```
 
-#### Удаление таблицы
+### Deleting a table
+
 ```php
 $migration->deleteTable();
 ```
 
-#### Создание колонок
+### Adding columns
+
 ```php
 $migration->changeTable(function (Migration $table) {
-    // Создаст колонку text c текстом по умолчанию "Текст" после колонки title
-    $table->create('text')->default('Текст')->after('title'); 
-    
-    // Создаст колонку test перед колонкой id
-    $table->create('test')->before('id'); 
+    // A column text holding "Text" by default, placed after title
+    $table->create('text')->default('Text')->after('title');
+
+    // A column test placed before id
+    $table->create('test')->before('id');
 });
 ```
 
-#### Переименовывание колонок
+### Renaming columns
+
 ```php
 $migration->changeTable(function (Migration $table) {
-    // Переименует user_id в author_id
-    $table->rename('user_id', 'author_id'); 
+    $table->rename('user_id', 'author_id');
 });
 ```
 
-#### Удаление колонок
+### Deleting columns
+
 ```php
 $migration->changeTable(function (Migration $table) {
-    // Удалит колонку title
     $table->delete('title');
 });
 ```
 
-#### Проверка существования таблицы/колонки
-```php
-// Проверит существование таблицы
-$migration->hasTable();
+### Several changes at once
 
-// Проверит существование колонки
+Changes declared in one `changeTable()` call are applied in a single pass over the
+file, whatever their number. Positions resolve against the columns as they change,
+so a column added earlier is visible to the next change:
+
+```php
+$migration->changeTable(function (Migration $table) {
+    $table->create('column4')->default('four')->after('column1');
+    $table->create('column5')->default('five')->before('column3');
+    $table->rename('column2', 'renamed');
+    $table->delete('column3');
+});
+```
+
+### Checking existence
+
+```php
+$migration->hasTable();
 $migration->hasColumn('field');
 ```
 
-### Разработка
+Neither creates anything.
 
-#### Тесты
+## Development
+
+### Tests
+
 ```bash
 composer test
 ```
 
-#### Примеры
-Демонстрация всех возможностей на тестовых данных:
+### Examples
+
+Every feature demonstrated on the test data:
+
 ```bash
 php examples/index.php
 ```
 
-#### Бенчмарк
-Замер времени и пиковой памяти на операциях чтения и записи. Таблица генерируется автоматически в `benchmarks/data` при первом запуске.
+### Benchmark
+
+Time and peak memory of the read and write operations. The table is generated into
+`benchmarks/data` on the first run.
 
 ```bash
 composer bench
 
-# своё количество строк и прогонов
+# a table and a run count of your own
 php benchmarks/bench.php --rows=200000 --runs=5
 
-# только интересующие операции
+# only the operations you care about
 php benchmarks/bench.php --filter=find
 ```
 
-Каждый случай выполняется в отдельном процессе, поэтому пиковая память относится именно к нему. Колонка «к файлу» показывает отношение потраченной памяти к размеру таблицы.
+Each case runs in a process of its own, so the peak memory belongs to that case
+alone. The last column compares the memory spent against the size of the table.
+
+## License
+
+MIT
