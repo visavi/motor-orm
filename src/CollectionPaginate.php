@@ -18,10 +18,10 @@ class CollectionPaginate extends Collection
      * Initializes a new collection
      */
     public function __construct(
-        protected array      $items,
+        array $items,
         protected Pagination $paginator,
     ) {
-        parent::__construct($this->items);
+        parent::__construct($items);
     }
 
     /**

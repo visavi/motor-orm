@@ -5,14 +5,14 @@ namespace MotorORM\Tests\Models;
 use MotorORM\Builder;
 
 /**
- * Class Test2
+ * Table with a string primary key
  *
  * @property string $key
  * @property string $value
  */
-class Test2 extends Builder
+class Setting extends Builder
 {
-    public string $table = __DIR__ . '/../../tests/data/test2.csv';
+    public string $table = __DIR__ . '/../../tests/data/settings.csv';
 
     /**
      * The attributes that should be cast.

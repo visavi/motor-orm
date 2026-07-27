@@ -1,7 +1,11 @@
 {
     "name": "visavi/motor-orm",
     "description": "",
-    "keywords": ["orm", "csv", "text orm"],
+    "keywords": [
+        "orm",
+        "csv",
+        "text orm"
+    ],
     "homepage": "https://github.com/visavi/motor-orm",
     "license": "MIT",
     "authors": [
@@ -16,7 +20,7 @@
         "ext-mbstring": "*"
     },
     "require-dev": {
-        "phpunit/phpunit": "^9.6"
+        "phpunit/phpunit": "^10.5 || ^11.5 || ^12.5"
     },
     "autoload": {
         "psr-4": {
@@ -28,5 +32,9 @@
             "MotorORM\\Tests\\": "tests"
         }
     },
-    "minimum-stability": "stable"
+    "minimum-stability": "stable",
+    "scripts": {
+        "test": "phpunit",
+        "bench": "php benchmarks/bench.php"
+    }
 }

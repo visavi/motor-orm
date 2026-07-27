@@ -4,22 +4,31 @@ namespace MotorORM\Tests;
 
 use MotorORM\Collection;
 use MotorORM\CollectionPaginate;
-use MotorOrm\Tests\Models\Test;
-use MotorOrm\Tests\Models\Test2;
-use MotorOrm\Tests\Models\Test3;
+use MotorORM\Tests\Models\Article;
+use MotorORM\Tests\Models\Setting;
+use MotorORM\Tests\Models\Item;
+use MotorORM\Tests\Models\Reserved;
+use MotorORM\Builder;
+use PHPUnit\Framework\Attributes\CoversClass;
+use UnexpectedValueException;
 
-/**
- * @coversDefaultClass \MotorORM\Builder
- */
+#[CoversClass(Builder::class)]
 final class BuilderTest extends TestCase
 {
     /**
+     * Item is a writable fixture, every test starts with it empty
+     */
+    protected function setUp(): void
+    {
+        Item::query()->truncate();
+    }
+
+    /**
      * Find by primary key
-     * @covers ::find()
      */
     public function testFind(): void
     {
-        $find = Test::query()->find(17);
+        $find = Article::query()->find(17);
 
         $this->assertIsObject($find);
         $this->assertEquals('17', $find->id);
@@ -27,22 +36,20 @@ final class BuilderTest extends TestCase
 
     /**
      * Find by primary key empty
-     * @covers ::find()
      */
     public function testFindEmpty(): void
     {
-        $find = Test::query()->find(777);
+        $find = Article::query()->find(777);
 
         $this->assertNull($find);
     }
 
     /**
      * Find by name limit 1
-     * @covers ::where()
      */
     public function testWhereLimit(): void
     {
-        $find = Test::query()->where('name', 'Миша')->limit(1)->get();
+        $find = Article::query()->where('name', 'Миша')->limit(1)->get();
 
         $this->assertInstanceOf(Collection::class, $find);
         $this->assertIsObject($find[0]);
@@ -54,11 +61,10 @@ final class BuilderTest extends TestCase
     /**
      * Find by name and last 1
      *
-     * @covers ::where()
      */
     public function testWhereLimitLast(): void
     {
-        $find = Test::query()->where('name', 'Миша')->orderByDesc('id')->first();
+        $find = Article::query()->where('name', 'Миша')->orderByDesc('id')->first();
 
         $this->assertIsObject($find);
         //$this->assertObjectHasAttribute('attr', $find);
@@ -70,11 +76,10 @@ final class BuilderTest extends TestCase
     /**
      * Find by name and title
      *
-     * @covers ::where()
      */
     public function testWhereWhereGet(): void
     {
-        $find = Test::query()->where('name', 'Миша')->where('title', 'Заголовок10')->get();
+        $find = Article::query()->where('name', 'Миша')->where('title', 'Заголовок10')->get();
 
         $this->assertInstanceOf(Collection::class, $find);
         $this->assertIsObject($find[0]);
@@ -86,11 +91,10 @@ final class BuilderTest extends TestCase
     /**
      * Find by condition
      *
-     * @covers ::where()
      */
     public function testWhere(): void
     {
-        $find = Test::query()->where('time', '>=', 1231231235)->get();
+        $find = Article::query()->where('time', '>=', 1231231235)->get();
 
         $this->assertInstanceOf(Collection::class, $find);
         //$this->assertClassHasAttribute('elements', Collection::class);
@@ -106,11 +110,10 @@ final class BuilderTest extends TestCase
     /**
      * Find by condition
      *
-     * @covers ::where()
      */
     public function testWherePaginate(): void
     {
-        $find = Test::query()->where('time', '>=', 1231231235)->paginate(2);
+        $find = Article::query()->where('time', '>=', 1231231235)->paginate(2);
 
         $this->assertInstanceOf(CollectionPaginate::class, $find);
         //$this->assertClassHasAttribute('elements', CollectionPaginate::class);
@@ -123,11 +126,10 @@ final class BuilderTest extends TestCase
     /**
      * Find by condition in
      *
-     * @covers ::whereIn()
      */
     public function testWhereIn(): void
     {
-        $find = Test::query()->whereIn('id', [1, 3, 5, 7])->get();
+        $find = Article::query()->whereIn('id', [1, 3, 5, 7])->get();
 
         $this->assertInstanceOf(Collection::class, $find);
         $this->assertCount(4, $find);
@@ -140,11 +142,10 @@ final class BuilderTest extends TestCase
     /**
      * Find by condition not in
      *
-     * @covers ::whereNotIn()
      */
     public function testWhereNotIn(): void
     {
-        $find = Test::query()->whereNotIn('id', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])->get();
+        $find = Article::query()->whereNotIn('id', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])->get();
 
         $this->assertInstanceOf(Collection::class, $find);
         $this->assertCount(10, $find);
@@ -163,11 +164,10 @@ final class BuilderTest extends TestCase
     /**
      * Get count
      *
-     * @covers ::count()
      */
     public function testCount(): void
     {
-        $find = Test::query()->count();
+        $find = Article::query()->count();
 
         $this->assertEquals(20, $find);
     }
@@ -175,11 +175,10 @@ final class BuilderTest extends TestCase
     /**
      * Get where count
      *
-     * @covers ::count()
      */
     public function testWhereCount(): void
     {
-        $find = Test::query()->where('time', '>', 1231231234)->count();
+        $find = Article::query()->where('time', '>', 1231231234)->count();
 
         $this->assertEquals(3, $find);
     }
@@ -187,11 +186,10 @@ final class BuilderTest extends TestCase
     /**
      * Get lines 1 - 10
      *
-     * @covers ::get()
      */
     public function testOffsetLimitGet(): void
     {
-        $find = Test::query()->offset(0)->limit(10)->get();
+        $find = Article::query()->offset(0)->limit(10)->get();
 
         $this->assertCount(10, $find);
         $this->assertEquals('Заголовок1', $find[0]->title);
@@ -202,11 +200,10 @@ final class BuilderTest extends TestCase
     /**
      * Get headers
      *
-     * @covers ::headers()
      */
     public function testHeaders(): void
     {
-        $find = Test::query()->headers();
+        $find = Article::query()->headers();
 
         $this->assertCount(5, $find);
         $this->assertEquals('id', $find[0]);
@@ -219,11 +216,10 @@ final class BuilderTest extends TestCase
     /**
      * Get first line
      *
-     * @covers ::first()
      */
     public function testFirst(): void
     {
-        $find = Test::query()->first();
+        $find = Article::query()->first();
 
         $this->assertIsObject($find);
         //$this->assertObjectHasAttribute('attr', $find);
@@ -234,11 +230,10 @@ final class BuilderTest extends TestCase
     /**
      * Get first line empty
      *
-     * @covers ::first()
      */
     public function testFirstEmpty(): void
     {
-        $find = Test3::query()->first();
+        $find = Item::query()->first();
 
         $this->assertNull($find);
     }
@@ -246,11 +241,10 @@ final class BuilderTest extends TestCase
     /**
      * Get where first line empty
      *
-     * @covers ::first()
      */
     public function testWhereFirstEmpty(): void
     {
-        $find = Test::query()->where('name', 'something')->first();
+        $find = Article::query()->where('name', 'something')->first();
 
         $this->assertNull($find);
     }
@@ -258,11 +252,10 @@ final class BuilderTest extends TestCase
     /**
      * Get first 3 lines
      *
-     * @covers ::first()
      */
     public function testFirst3(): void
     {
-        $find = Test::query()->limit(3)->get();
+        $find = Article::query()->limit(3)->get();
 
         $this->assertCount(3, $find);
         //$this->assertObjectHasAttribute('attr', $find[0]);
@@ -273,11 +266,10 @@ final class BuilderTest extends TestCase
     /**
      * Get last 3 lines
      *
-     * @covers ::first()
      */
     public function testLast3(): void
     {
-        $find = Test::query()->orderByDesc('id')->limit(3)->get();
+        $find = Article::query()->orderByDesc('id')->limit(3)->get();
 
         $this->assertCount(3, $find);
         //$this->assertObjectHasAttribute('attr', $find[0]);
@@ -287,11 +279,10 @@ final class BuilderTest extends TestCase
 
     /**
      * Find by string primary key
-     * @covers ::find()
      */
     public function testFindStringKey(): void
     {
-        $find = Test2::query()->find('key1');
+        $find = Setting::query()->find('key1');
 
         $this->assertIsObject($find);
         $this->assertEquals('key1', $find->key);
@@ -300,11 +291,10 @@ final class BuilderTest extends TestCase
 
     /**
      * Find by empty string primary key
-     * @covers ::find()
      */
     public function testFindEmptyStringKey(): void
     {
-        $find = Test2::query()->find('key3');
+        $find = Setting::query()->find('key3');
 
         $this->assertIsObject($find);
         $this->assertEquals('key3', $find->key);
@@ -313,11 +303,10 @@ final class BuilderTest extends TestCase
 
     /**
      * Get all
-     * @covers ::get()
      */
     public function testAllGet(): void
     {
-        $find = Test2::query()->get();
+        $find = Setting::query()->get();
 
         $this->assertCount(5, $find);
         //$this->assertObjectHasAttribute('attr', $find[0]);
@@ -327,11 +316,10 @@ final class BuilderTest extends TestCase
 
     /**
      * Find by name and sort (time asc)
-     * @covers ::orderBy()
      */
     public function testSort(): void
     {
-        $find = Test::query()->where('name', 'Миша')->orderBy('time')->limit(3)->get();
+        $find = Article::query()->where('name', 'Миша')->orderBy('time')->limit(3)->get();
 
         $this->assertCount(3, $find);
         $this->assertEquals(10, $find[0]->id);
@@ -340,11 +328,10 @@ final class BuilderTest extends TestCase
 
     /**
      * Find by name and double sort (time desc, id desc)
-     * @covers ::orderByDesc()
      */
     public function testDoubleSort(): void
     {
-        $find = Test::query()->where('name', 'Миша')->orderBy('time', 'desc')->orderByDesc('id')->limit(3)->get();
+        $find = Article::query()->where('name', 'Миша')->orderBy('time', 'desc')->orderByDesc('id')->limit(3)->get();
 
         $this->assertCount(3, $find);
         $this->assertEquals(18, $find[0]->id);
@@ -353,117 +340,271 @@ final class BuilderTest extends TestCase
 
     /**
      * Create field
-     * @covers ::create()
      */
     public function testCreate(): void
     {
-        $data = Test3::query()->create([
+        $data = Item::query()->create([
            'name' => 'name1',
            'value' => 555,
         ]);
 
-        $find = Test3::query()->orderByDesc('id')->first();
+        $find = Item::query()->orderByDesc('id')->first();
 
         $this->assertEquals($find->id, $data->id);
         //$this->assertObjectHasAttribute('attr', $find);
         $this->assertEquals('name1', $find->name);
         $this->assertEquals('555', $find->value);
 
-        Test3::query()->truncate();
+        Item::query()->truncate();
     }
 
     /**
      * Create multiple fields
-     * @covers ::create()
      */
     public function testMultipleCreate(): void
     {
         foreach ($this->data() as $val) {
-            Test3::query()->create($val);
+            Item::query()->create($val);
         }
 
-        $find = Test3::query()->get();
+        $find = Item::query()->get();
 
         $this->assertCount(6, $find);
         $this->assertEquals('name3', $find[2]->name);
         $this->assertEquals('value3', $find[2]->value);
 
-        Test3::query()->truncate();
+        Item::query()->truncate();
     }
 
     /**
      * Update fields
-     * @covers ::update()
      */
     public function testFindUpdate(): void
     {
         foreach ($this->data() as $val) {
-            Test3::query()->create($val);
+            Item::query()->create($val);
         }
 
-        $updatedLines = Test3::query()->find(1)->update(['name' => 'yyy', 'value' => 999]);
+        $updatedLines = Item::query()->find(1)->update(['name' => 'yyy', 'value' => 999]);
 
-        $find = Test3::query()->find(1);
+        $find = Item::query()->find(1);
 
         $this->assertEquals(1, $updatedLines);
         $this->assertEquals('yyy', $find->name);
         $this->assertEquals('999', $find->value);
 
-        Test3::query()->truncate();
+        Item::query()->truncate();
     }
 
     /**
      * Update fields
-     * @covers ::update()
      */
     public function testUpdate(): void
     {
         foreach ($this->data() as $val) {
-            Test3::query()->create($val);
+            Item::query()->create($val);
         }
 
-        Test3::query()->where('id', 3)->update(['name' => 'xxx', 'value' => 888]);
+        Item::query()->where('id', 3)->update(['name' => 'xxx', 'value' => 888]);
 
-        $find = Test3::query()->find(3);
+        $find = Item::query()->find(3);
 
         $this->assertEquals('xxx', $find->name);
         $this->assertEquals('888', $find->value);
 
-        Test3::query()->truncate();
+        Item::query()->truncate();
     }
 
     /**
      * Delete fields
-     * @covers ::delete()
      */
     public function testDelete(): void
     {
         foreach ($this->data() as $val) {
-            Test3::query()->create($val);
+            Item::query()->create($val);
         }
-        Test3::query()->where('id', 3)->delete();
+        Item::query()->where('id', 3)->delete();
 
-        $find = Test3::query()->find(3);
+        $find = Item::query()->find(3);
 
         $this->assertNull($find);
 
-        Test3::query()->truncate();
+        Item::query()->truncate();
     }
 
     /**
      * Truncate fields
-     * @covers ::truncate()
      */
     public function testTruncate(): void
     {
         foreach ($this->data() as $val) {
-            Test3::query()->create($val);
+            Item::query()->create($val);
         }
 
-        Test3::query()->truncate();
+        Item::query()->truncate();
 
-        $find = Test3::query()->get();
+        $find = Item::query()->get();
         $this->assertCount(0, $find);
+    }
+
+    /**
+     * Save record with an integer primary key
+     */
+    public function testSave(): void
+    {
+        foreach ($this->data() as $val) {
+            Item::query()->create($val);
+        }
+
+        $record = Item::query()->find(2);
+        $record->name = 'saved';
+        $saved = $record->save();
+
+        $find = Item::query()->find(2);
+
+        $this->assertTrue($saved);
+        $this->assertEquals('saved', $find->name);
+        $this->assertCount(6, Item::query()->get());
+
+        Item::query()->truncate();
+    }
+
+    /**
+     * Save record with a string primary key
+     */
+    public function testSaveStringKey(): void
+    {
+        $record = Setting::query()->find('key2');
+        $record->value = 'изменено';
+        $saved = $record->save();
+
+        $find = Setting::query()->find('key2');
+
+        $this->assertTrue($saved);
+        $this->assertEquals('изменено', $find->value);
+        $this->assertCount(5, Setting::query()->get());
+
+        $find->value = '1000';
+        $find->save();
+    }
+
+    /**
+     * Create with an undefined column
+     */
+    public function testCreateUndefinedColumn(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+
+        try {
+            Item::query()->create(['name' => 'name1', 'undefined' => 1]);
+        } finally {
+            Item::query()->truncate();
+        }
+    }
+
+    /**
+     * Create with a duplicate primary key
+     */
+    public function testCreateDuplicate(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+
+        try {
+            Item::query()->create(['id' => 1, 'name' => 'name1']);
+            Item::query()->create(['id' => 1, 'name' => 'name2']);
+        } finally {
+            Item::query()->truncate();
+        }
+    }
+
+    /**
+     * A non numeric primary key cannot be generated, it has to be given
+     */
+    public function testCreateWithoutGeneratableKey(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('no unique ID assigned');
+
+        Setting::query()->create(['value' => 'значение']);
+    }
+
+    /**
+     * Update with an undefined column
+     */
+    public function testUpdateUndefinedColumn(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+
+        Item::query()->update(['undefined' => 1]);
+    }
+
+    /**
+     * Create with an explicit primary key
+     */
+    public function testCreateExplicitKey(): void
+    {
+        Item::query()->create(['id' => 100, 'name' => 'name1']);
+        Item::query()->create(['name' => 'name2']);
+
+        $find = Item::query()->get();
+
+        $this->assertCount(2, $find);
+        $this->assertEquals(100, $find[0]->id);
+        $this->assertEquals(101, $find[1]->id);
+
+        Item::query()->truncate();
+    }
+
+    /**
+     * Exists
+     */
+    public function testExists(): void
+    {
+        $this->assertTrue(Article::query()->where('id', 1)->exists());
+        $this->assertFalse(Article::query()->where('id', 999)->exists());
+    }
+
+    /**
+     * A column named like a builder method must be read as a column
+     */
+    public function testColumnShadowingMethodName(): void
+    {
+        $find = Reserved::query()->find(1);
+
+        $this->assertEquals(10, $find->count);
+        $this->assertEquals('Первый', $find->first);
+    }
+
+    /**
+     * Convert record to array
+     */
+    public function testToArray(): void
+    {
+        $find = Article::query()->find(1);
+
+        $this->assertSame([
+            'id'    => 1,
+            'name'  => 'Петя',
+            'title' => 'Заголовок1',
+            'text'  => 'Текст',
+            'time'  => '1231231234',
+        ], $find->toArray());
+    }
+
+    /**
+     * Isset on attributes
+     */
+    public function testIssetAndSet(): void
+    {
+        $find = Article::query()->find(1);
+
+        $this->assertTrue(isset($find->name));
+        $this->assertFalse(isset($find->undefined));
+        $this->assertNull($find->undefined);
+
+        $find->undefined = 'value';
+        $this->assertTrue(isset($find->undefined));
+        $this->assertEquals('value', $find->undefined);
     }
 
     /**

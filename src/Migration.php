@@ -15,11 +15,21 @@ use UnexpectedValueException;
 class Migration
 {
     protected array $columns = [];
-    protected SplFileObject $file;
+    protected ?SplFileObject $file = null;
 
     public function __construct(public Builder $builder)
     {
-        $this->file = $builder->open()->file();
+    }
+
+    /**
+     * Open the table on first use. Opening creates the file, so asking
+     * whether a table exists must not go through here.
+     *
+     * @return SplFileObject
+     */
+    protected function file(): SplFileObject
+    {
+        return $this->file ??= $this->builder->open()->file();
     }
 
     /**
@@ -174,9 +184,10 @@ class Migration
 
         $columns = array_column($this->columns, 'name');
 
-        chmod($this->builder->file()->getRealPath(), 0666);
+        $file = $this->file();
+        chmod($this->builder->getPath(), 0666);
 
-        $this->file->fputcsv($columns);
+        $file->fputcsv($columns);
         $this->columns = [];
 
         return true;
@@ -195,7 +206,8 @@ class Migration
             );
         }
 
-        unlink($this->builder->file()->getPathname());
+        unlink($this->builder->getPath());
+        $this->file = null;
 
         return true;
     }
@@ -211,24 +223,66 @@ class Migration
     {
         $closure($this);
 
-        foreach ($this->columns as $column) {
-            $column['curPos'] = array_search($column['name'], $this->builder->headers(), true);
-            $column['newPos'] = array_search($column['before'] ?: $column['after'], $this->builder->headers(), true);
-
-            $this->process(function ($temp, &$current) use ($column) {
-                if ($column['delete']) {
-                    $this->deleteColumn($current, $column);
-                }  elseif ($column['rename']) {
-                    $this->renameColumn($current, $column, $temp->key());
-                } else {
-                    $this->addColumn($current, $column, $temp->key());
-                }
-            });
+        if (! $this->columns) {
+            return true;
         }
+
+        /*
+         * Positions are resolved against the headers as every change is
+         * applied, so that a column added earlier is visible to the next one.
+         * Replaying that plan row by row rewrites the table in a single pass.
+         */
+        $headers = $this->headers();
+        $plan    = [];
+
+        foreach ($this->columns as $column) {
+            $column['curPos'] = array_search($column['name'], $headers, true);
+            $column['newPos'] = array_search($column['before'] ?: $column['after'], $headers, true);
+
+            $plan[]  = $column;
+            $headers = $this->applyColumn($headers, $column, 0);
+        }
+
+        $this->process(function ($temp, &$current) use ($plan) {
+            $line = $temp->key();
+
+            foreach ($plan as $column) {
+                $current = $this->applyColumn($current, $column, $line);
+            }
+        });
 
         $this->columns = [];
 
         return true;
+    }
+
+    /**
+     * Apply a single column change to one record
+     *
+     * @param array $record
+     * @param array $column
+     * @param int   $line
+     *
+     * @return array
+     */
+    private function applyColumn(array $record, array $column, int $line): array
+    {
+        if ($column['delete']) {
+            $this->deleteColumn($record, $column);
+
+            /* Close the gap left behind, the next change counts positions */
+            return array_values($record);
+        }
+
+        if ($column['rename']) {
+            $this->renameColumn($record, $column, $line);
+
+            return $record;
+        }
+
+        $this->addColumn($record, $column, $line);
+
+        return $record;
     }
 
     /**
@@ -240,7 +294,7 @@ class Migration
      */
     public function hasColumn(string $column): bool
     {
-        return in_array($column,  $this->builder->headers(), true);
+        return in_array($column, $this->headers(), true);
     }
 
     /**
@@ -250,8 +304,21 @@ class Migration
      */
     public function hasTable(): bool
     {
-        return file_exists($this->builder->file()->getRealPath())
-            && $this->builder->file()->getSize() !== 0;
+        $path = $this->builder->getPath();
+
+        return is_file($path) && filesize($path) > 0;
+    }
+
+    /**
+     * Headers of the table, opening it if that has not happened yet
+     *
+     * @return array
+     */
+    private function headers(): array
+    {
+        $this->file();
+
+        return $this->builder->headers();
     }
 
     /**
@@ -263,37 +330,43 @@ class Migration
      */
     private function process(Closure $closure): void
     {
-        if (! $this->file->flock(LOCK_EX)) {
-            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->file->getFilename()));
+        $file = $this->file();
+
+        if (! $file->flock(LOCK_EX)) {
+            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $file->getFilename()));
         }
 
-        $this->file->fseek(0);
+        try {
+            $file->fseek(0);
 
-        $temp = new SplTempFileObject(-1);
-        $temp->setFlags(
-            SplFileObject::READ_AHEAD |
-            SplFileObject::SKIP_EMPTY |
-            SplFileObject::READ_CSV
-        );
+            /* Default memory budget, larger tables spill to a temporary file */
+            $temp = new SplTempFileObject();
+            $temp->setCsvControl(...Builder::CSV_CONTROL);
+            $temp->setFlags(
+                SplFileObject::READ_AHEAD |
+                SplFileObject::SKIP_EMPTY |
+                SplFileObject::READ_CSV
+            );
 
-        while(! $this->file->eof()) {
-            $temp->fwrite($this->file->fread(4096));
+            while(! $file->eof()) {
+                $temp->fwrite($file->fread(4096));
+            }
+
+            $temp->rewind();
+            $file->ftruncate(0);
+            $file->fseek(0);
+
+            while ($temp->valid()) {
+                $current = $temp->current();
+
+                $closure($temp, $current);
+
+                $file->fputcsv($current);
+                $temp->next();
+            }
+        } finally {
+            $file->flock(LOCK_UN);
         }
-
-        $temp->rewind();
-        $this->file->ftruncate(0);
-        $this->file->fseek(0);
-
-        while ($temp->valid()) {
-            $current = $temp->current();
-
-            $closure($temp, $current);
-
-            $this->file->fputcsv($current);
-            $temp->next();
-        }
-
-        $this->file->flock(LOCK_UN);
     }
 
     /**

@@ -1,11 +1,13 @@
 <?php
 
-namespace MotorORM\Tests\Models;
+declare(strict_types=1);
+
+namespace MotorORM\Benchmarks\Models;
 
 use MotorORM\Builder;
 
 /**
- * Class Test
+ * Class Bench
  *
  * @property int $id
  * @property string $name
@@ -13,7 +15,7 @@ use MotorORM\Builder;
  * @property string $text
  * @property int $time
  */
-class Test extends Builder
+class Bench extends Builder
 {
-    public string $table = __DIR__ . '/../../tests/data/test.csv';
+    public string $table = __DIR__ . '/../data/bench.csv';
 }

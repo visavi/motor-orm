@@ -44,7 +44,7 @@ class Pagination
         $this->limit  = $limit;
         $this->total  = $total;
         $this->crumbs = $crumbs;
-        $this->page   = $this->page();
+        $this->page   = min($this->page(), max(1, $this->pageCount()));
         $this->offset = $this->offset();
 
         return $this;
@@ -57,23 +57,43 @@ class Pagination
      */
     public function offset(): int
     {
-        if ($this->total === 0) {
-            $this->page = 1;
-        } elseif ($this->total && $this->page * $this->limit >= $this->total) {
-            $this->page = (int) ceil($this->total / $this->limit);
-        }
-
         return $this->page * $this->limit - $this->limit;
     }
 
     /**
-     * Get current page
+     * Get current page, taken from the request unless one was set explicitly
      *
      * @return int
      */
     public function page(): int
     {
-        return ! empty($_GET[$this->pageName]) ? abs((int) $_GET[$this->pageName]) : 1;
+        if (isset($this->page)) {
+            return $this->page;
+        }
+
+        return ! empty($_GET[$this->pageName]) ? max(1, abs((int) $_GET[$this->pageName])) : 1;
+    }
+
+    /**
+     * Set current page, bypassing the request
+     *
+     * @param int $page
+     *
+     * @return void
+     */
+    public function setPage(int $page): void
+    {
+        $this->page = max(1, $page);
+    }
+
+    /**
+     * Get total page count
+     *
+     * @return int
+     */
+    public function pageCount(): int
+    {
+        return $this->limit > 0 ? (int) ceil($this->total / $this->limit) : 0;
     }
 
     /**
@@ -88,7 +108,7 @@ class Pagination
         }
 
         $pages      = [];
-        $pageCount  = (int) ceil($this->total / $this->limit);
+        $pageCount  = $this->pageCount();
         $indexFirst = max($this->page - $this->crumbs, 1);
         $indexLast  = min($this->page + $this->crumbs, $pageCount);
 

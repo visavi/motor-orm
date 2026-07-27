@@ -6,6 +6,7 @@ namespace MotorORM;
 
 use ArrayAccess;
 use ArrayIterator;
+use Closure;
 use Countable;
 use IteratorAggregate;
 use Traversable;
@@ -57,7 +58,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      *
      * @return mixed
      */
-    public function first(callable $callback = null): mixed
+    public function first(?callable $callback = null): mixed
     {
         if (is_null($callback)) {
             return empty($this->items) ? null : reset($this->items);
@@ -79,15 +80,19 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      *
      * @return mixed
      */
-    public function last(callable $callback = null): mixed
+    public function last(?callable $callback = null): mixed
     {
         if (is_null($callback)) {
             return empty($this->items) ? null : end($this->items);
         }
 
-        $this->items = array_reverse($this->items, true);
+        foreach (array_reverse($this->items, true) as $key => $value) {
+            if ($callback($value, $key)) {
+                return $value;
+            }
+        }
 
-        return $this->first($callback);
+        return null;
     }
 
     /**
@@ -164,8 +169,8 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      */
     public function contains(mixed $value, bool $strict = false): bool
     {
-        if (is_callable($value)) {
-            return $this->first($value) !== null;
+        if ($value instanceof Closure) {
+            return $this->search($value) !== false;
         }
 
         return in_array($value, $this->items, $strict);
@@ -181,7 +186,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      */
     public function search(mixed $value, bool $strict = false): bool|int|string
     {
-        if (! is_callable($value)) {
+        if (! $value instanceof Closure) {
             return array_search($value, $this->items, $strict);
         }
 
@@ -294,49 +299,49 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
     }
 
     /**
+     * Key the items by a field or by the result of a closure
+     *
+     * Items keep their value, only the keys change. A repeated key keeps the
+     * last item, an item without the field is dropped
+     *
+     * @param string|Closure $key
+     *
+     * @return self
+     */
+    public function keyBy(string|Closure $key): self
+    {
+        $keyed = [];
+        foreach ($this->items as $index => $item) {
+            if ($key instanceof Closure) {
+                $keyed[$key($item, $index)] = $item;
+
+                continue;
+            }
+
+            $value = is_array($item) ? $item[$key] ?? null : $item->$key ?? null;
+
+            if ($value !== null) {
+                $keyed[$value] = $item;
+            }
+        }
+
+        return new self($keyed);
+    }
+
+    /**
      * Filter
      *
      * @param callable|null $callback
      *
      * @return self
      */
-    public function filter(callable $callback = null): self
+    public function filter(?callable $callback = null): self
     {
         if ($callback) {
             return new self(array_filter($this->items, $callback, ARRAY_FILTER_USE_BOTH));
         }
 
         return new self(array_filter($this->items));
-    }
-
-    /**
-     * Gets the key/index of the item at the current iterator position.
-     *
-     * @return int|string|null
-     */
-    public function key(): int|string|null
-    {
-        return key($this->items);
-    }
-
-    /**
-     * Moves the internal iterator position to the next item and returns this item.
-     *
-     * @return false|mixed
-     */
-    public function next(): mixed
-    {
-        return next($this->items);
-    }
-
-    /**
-     * Gets the item of the collection at the current iterator position.
-     *
-     * @return false|mixed
-     */
-    public function current(): mixed
-    {
-        return current($this->items);
     }
 
     /**
