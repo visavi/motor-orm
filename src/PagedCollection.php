@@ -7,17 +7,17 @@ namespace MotorORM;
 use InvalidArgumentException;
 
 /**
- * What every page navigation knows
+ * A collection that knows it is one page of a longer read
  *
- * A paginator is the page: it holds the rows and is walked over like any other
- * collection, and it knows where that page stands among the rest. Where the
+ * It holds the rows of that page and is walked over like any other collection,
+ * and on top of that it knows where the page stands among the rest. Where the
  * page number came from is none of its business
  *
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
  */
-abstract class Paginator extends Collection
+abstract class PagedCollection extends Collection
 {
     /** Rows on a page */
     protected(set) int $limit;
@@ -239,7 +239,7 @@ abstract class Paginator extends Collection
     }
 
     /**
-     * Keep the page within the range the paginator knows of
+     * Keep the page within the range the collection knows of
      *
      * @param int $page
      *

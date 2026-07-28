@@ -768,8 +768,9 @@ echo $articles->withPath('/articles')->links();
 подсчёт, у него просто нет, поэтому обращение к ним падает там, где написано, а
 не в глубине библиотеки.
 
-Оба — коллекции строк своей страницы и делят общего предка `Paginator`, в
-котором лежит всё, что у них одинаково.
+Оба — коллекции строк своей страницы: их перебирают, считают и режут, как
+любую другую коллекцию, а сверх того они знают, где эта страница стоит среди
+остальных.
 
 `links()` печатает разметку Bootstrap 5. Для любой другой передайте свой шаблон,
 остальное настраивается через `setPageName()` и `onEachSide()`:
@@ -804,16 +805,19 @@ echo $articles->setPageName('p')->onEachSide(3)->links(__DIR__ . '/views/paginat
 $migration = new Migration(new Article());
 ```
 
+Колонки перечисляются подряд, а `createTable()` или `changeTable()` в конце
+применяет их к файлу.
+
 ### Создание таблицы
 
 ```php
-$migration->createTable(function (Migration $table) {
-    $table->create('id');
-    $table->create('title');
-    $table->create('text');
-    $table->create('user_id');
-    $table->create('created_at');
-});
+$migration
+    ->create('id')
+    ->create('title')
+    ->create('text')
+    ->create('user_id')
+    ->create('created_at')
+    ->createTable();
 ```
 
 ### Удаление таблицы
@@ -825,45 +829,45 @@ $migration->deleteTable();
 ### Создание колонок
 
 ```php
-$migration->changeTable(function (Migration $table) {
+$migration
     // Создаст колонку text с текстом по умолчанию "Текст" после колонки title
-    $table->create('text')->default('Текст')->after('title');
+    ->create('text')->default('Текст')->after('title')
 
-    // Создаст колонку test перед колонкой id
-    $table->create('test')->before('id');
-});
+    // Создаст колонку slug перед колонкой text
+    ->create('slug')->before('text')
+
+    ->changeTable();
 ```
+
+Колонку не стоит ставить перед первой: первый столбец — это уникальный ключ
+таблицы, и новая колонка займёт его место.
 
 ### Переименование колонок
 
 ```php
-$migration->changeTable(function (Migration $table) {
-    $table->rename('user_id', 'author_id');
-});
+$migration->rename('user_id', 'author_id')->changeTable();
 ```
 
 ### Удаление колонок
 
 ```php
-$migration->changeTable(function (Migration $table) {
-    $table->delete('title');
-});
+$migration->delete('title')->changeTable();
 ```
 
 ### Несколько изменений сразу
 
-Изменения, объявленные в одном вызове `changeTable()`, применяются за один проход
+Изменения, накопленные до одного вызова `changeTable()`, применяются за один проход
 по файлу, сколько бы их ни было. Позиции считаются по колонкам в том виде, в каком
 они есть на момент изменения, поэтому добавленная ранее колонка видна следующему
 изменению:
 
 ```php
-$migration->changeTable(function (Migration $table) {
-    $table->create('column4')->default('four')->after('column1');
-    $table->create('column5')->default('five')->before('column3');
-    $table->rename('column2', 'renamed');
-    $table->delete('column3');
-});
+$migration
+    ->create('column4')->default('four')->after('column1')
+    ->create('column5')->default('five')->before('column3')
+    ->rename('column2', 'renamed')
+    ->delete('column3')
+    ->changeTable();
 ```
 
 ### Проверка существования

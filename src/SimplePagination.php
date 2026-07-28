@@ -15,7 +15,7 @@ namespace MotorORM;
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
  */
-class SimplePagination extends Paginator
+class SimplePagination extends PagedCollection
 {
     /**
      * @param array $items   the rows of the page

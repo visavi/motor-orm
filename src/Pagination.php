@@ -15,7 +15,7 @@ namespace MotorORM;
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
  */
-class Pagination extends Paginator
+class Pagination extends PagedCollection
 {
     /** Total rows behind all the pages */
     private(set) int $total;
@@ -60,7 +60,7 @@ class Pagination extends Paginator
      * Number of the last page of a table not yet read
      *
      * A query has to know which rows to skip before it reads them, so the
-     * arithmetic lives where it can be asked for without a paginator
+     * arithmetic lives where it can be asked for without a page of rows
      *
      * @param int $total
      * @param int $limit

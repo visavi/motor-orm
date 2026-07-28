@@ -30,9 +30,7 @@ final class MigrationTest extends TestCase
     public function testCreateColumn(): void
     {
         $migration = new Migration(new Structure());
-        $migration->changeTable(function (Migration $table) {
-            $table->create('column4');
-        });
+        $migration->create('column4')->changeTable();
 
         $headers = Structure::query()->headers();
         $this->assertIsArray($headers);
@@ -40,9 +38,7 @@ final class MigrationTest extends TestCase
         $this->assertContains('column4', $headers);
         $this->assertSame($headers, ['column1', 'column2',  'column3', 'column4']);
 
-        $migration->changeTable(function (Migration $table) {
-            $table->delete('column4');
-        });
+        $migration->delete('column4')->changeTable();
     }
 
     /**
@@ -51,9 +47,7 @@ final class MigrationTest extends TestCase
     public function testCreateColumnAfter(): void
     {
         $migration = new Migration(new Structure());
-        $migration->changeTable(function (Migration $table) {
-            $table->create('column4')->after('column1');
-        });
+        $migration->create('column4')->after('column1')->changeTable();
 
         $headers = Structure::query()->headers();
         $this->assertIsArray($headers);
@@ -61,9 +55,7 @@ final class MigrationTest extends TestCase
         $this->assertContains('column4', $headers);
         $this->assertSame($headers, ['column1', 'column4', 'column2', 'column3']);
 
-        $migration->changeTable(function (Migration $table) {
-            $table->delete('column4');
-        });
+        $migration->delete('column4')->changeTable();
     }
 
     /**
@@ -72,9 +64,7 @@ final class MigrationTest extends TestCase
     public function testCreateColumnDefault(): void
     {
         $migration = new Migration(new Structure());
-        $migration->changeTable(function (Migration $table) {
-            $table->create('column4')->default('xxx')->after('column2');
-        });
+        $migration->create('column4')->default('xxx')->after('column2')->changeTable();
 
         $headers = Structure::query()->headers();
         $this->assertIsArray($headers);
@@ -86,9 +76,7 @@ final class MigrationTest extends TestCase
         $this->assertNotNull($find->column4);
         $this->assertEquals('xxx', $find->column4);
 
-        $migration->changeTable(function (Migration $table) {
-            $table->delete('column4');
-        });
+        $migration->delete('column4')->changeTable();
     }
 
     /**
@@ -97,9 +85,7 @@ final class MigrationTest extends TestCase
     public function testRenameColumn(): void
     {
         $migration = new Migration(new Structure());
-        $migration->changeTable(function (Migration $table) {
-            $table->rename('column3', 'column4');
-        });
+        $migration->rename('column3', 'column4')->changeTable();
 
         $headers = Structure::query()->headers();
         $this->assertIsArray($headers);
@@ -107,9 +93,7 @@ final class MigrationTest extends TestCase
         $this->assertContains('column4', $headers);
         $this->assertSame($headers, ['column1', 'column2',  'column4']);
 
-        $migration->changeTable(function (Migration $table) {
-            $table->rename('column4', 'column3');
-        });
+        $migration->rename('column4', 'column3')->changeTable();
     }
 
     /**
@@ -118,9 +102,7 @@ final class MigrationTest extends TestCase
     public function testDeleteColumn(): void
     {
         $migration = new Migration(new Structure());
-        $migration->changeTable(function (Migration $table) {
-            $table->delete('column3');
-        });
+        $migration->delete('column3')->changeTable();
 
         $headers = Structure::query()->headers();
         $this->assertIsArray($headers);
@@ -128,9 +110,7 @@ final class MigrationTest extends TestCase
         $this->assertNotContains('column3', $headers);
         $this->assertSame($headers, ['column1', 'column2']);
 
-        $migration->changeTable(function (Migration $table) {
-            $table->create('column3')->default('value');
-        });
+        $migration->create('column3')->default('value')->changeTable();
     }
 
     /**
@@ -140,11 +120,11 @@ final class MigrationTest extends TestCase
     public function testMultipleColumnChanges(): void
     {
         $migration = new Migration(new Structure());
-        $migration->changeTable(function (Migration $table) {
-            $table->create('column4')->default('four')->after('column1');
-            $table->create('column5')->default('five')->before('column3');
-            $table->rename('column2', 'renamed');
-        });
+        $migration
+            ->create('column4')->default('four')->after('column1')
+            ->create('column5')->default('five')->before('column3')
+            ->rename('column2', 'renamed')
+            ->changeTable();
 
         $headers = Structure::query()->headers();
         $this->assertSame(['column1', 'column4', 'renamed', 'column5', 'column3'], $headers);
@@ -156,11 +136,11 @@ final class MigrationTest extends TestCase
         $this->assertEquals('value', $find->column3);
         $this->assertCount(5, Structure::query()->get());
 
-        $migration->changeTable(function (Migration $table) {
-            $table->delete('column4');
-            $table->delete('column5');
-            $table->rename('renamed', 'column2');
-        });
+        $migration
+            ->delete('column4')
+            ->delete('column5')
+            ->rename('renamed', 'column2')
+            ->changeTable();
 
         $this->assertSame(['column1', 'column2', 'column3'], Structure::query()->headers());
     }
@@ -171,12 +151,12 @@ final class MigrationTest extends TestCase
     public function testCreateTable(): void
     {
         $migration = new Migration(new Scratch());
-        $migration->createTable(function (Migration $table) {
-            $table->create('column1');
-            $table->create('column2');
-            $table->create('column3');
-            $table->create('column4');
-        });
+        $migration
+            ->create('column1')
+            ->create('column2')
+            ->create('column3')
+            ->create('column4')
+            ->createTable();
 
         $headers = Scratch::query()->headers();
         $this->assertIsArray($headers);
@@ -190,16 +170,12 @@ final class MigrationTest extends TestCase
     public function testCreateExistingTable(): void
     {
         $migration = new Migration(new Scratch());
-        $migration->createTable(function (Migration $table) {
-            $table->create('column1');
-        });
+        $migration->create('column1')->createTable();
 
         $this->expectException(UnexpectedValueException::class);
-        $this->expectExceptionMessage('already exists');
+        $this->expectExceptionMessage('creating table');
 
-        $migration->createTable(function (Migration $table) {
-            $table->create('column1');
-        });
+        $migration->create('column2')->createTable();
     }
 
     /**
@@ -230,9 +206,7 @@ final class MigrationTest extends TestCase
     public function testDeleteTable(): void
     {
         $migration = new Migration(new Scratch());
-        $migration->createTable(function (Migration $table) {
-            $table->create('column1');
-        });
+        $migration->create('column1')->createTable();
 
         $this->assertTrue($migration->hasTable());
 

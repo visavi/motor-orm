@@ -765,8 +765,9 @@ rest is the same — `currentPage()`, `perPage()`, `firstItem()`, `lastItem()`,
 are not on it at all, so asking for one fails where it is written rather than
 deep inside.
 
-Both are collections of the rows of their page and share a `Paginator` that
-holds everything they have in common.
+Both are collections of the rows of their page: walk, count and slice them like
+any other collection, and on top of that they know where the page stands among
+the rest.
 
 `links()` renders Bootstrap 5 markup. Pass a template of your own to get anything
 else, and tune the rest with `setPageName()` and `onEachSide()`:
@@ -802,16 +803,19 @@ Pass the model to the constructor:
 $migration = new Migration(new Article());
 ```
 
+Columns are named one after another, and `createTable()` or `changeTable()` at the
+end applies them to the file.
+
 ### Creating a table
 
 ```php
-$migration->createTable(function (Migration $table) {
-    $table->create('id');
-    $table->create('title');
-    $table->create('text');
-    $table->create('user_id');
-    $table->create('created_at');
-});
+$migration
+    ->create('id')
+    ->create('title')
+    ->create('text')
+    ->create('user_id')
+    ->create('created_at')
+    ->createTable();
 ```
 
 ### Deleting a table
@@ -823,44 +827,44 @@ $migration->deleteTable();
 ### Adding columns
 
 ```php
-$migration->changeTable(function (Migration $table) {
+$migration
     // A column text holding "Text" by default, placed after title
-    $table->create('text')->default('Text')->after('title');
+    ->create('text')->default('Text')->after('title')
 
-    // A column test placed before id
-    $table->create('test')->before('id');
-});
+    // A column slug placed before text
+    ->create('slug')->before('text')
+
+    ->changeTable();
 ```
+
+Nothing should be placed before the first column: it is the primary key of the
+table, and a new column would take its place.
 
 ### Renaming columns
 
 ```php
-$migration->changeTable(function (Migration $table) {
-    $table->rename('user_id', 'author_id');
-});
+$migration->rename('user_id', 'author_id')->changeTable();
 ```
 
 ### Deleting columns
 
 ```php
-$migration->changeTable(function (Migration $table) {
-    $table->delete('title');
-});
+$migration->delete('title')->changeTable();
 ```
 
 ### Several changes at once
 
-Changes declared in one `changeTable()` call are applied in a single pass over the
-file, whatever their number. Positions resolve against the columns as they change,
-so a column added earlier is visible to the next change:
+Changes collected before one `changeTable()` call are applied in a single pass over
+the file, whatever their number. Positions resolve against the columns as they
+change, so a column added earlier is visible to the next change:
 
 ```php
-$migration->changeTable(function (Migration $table) {
-    $table->create('column4')->default('four')->after('column1');
-    $table->create('column5')->default('five')->before('column3');
-    $table->rename('column2', 'renamed');
-    $table->delete('column3');
-});
+$migration
+    ->create('column4')->default('four')->after('column1')
+    ->create('column5')->default('five')->before('column3')
+    ->rename('column2', 'renamed')
+    ->delete('column3')
+    ->changeTable();
 ```
 
 ### Checking existence

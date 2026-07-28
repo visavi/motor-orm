@@ -157,21 +157,17 @@ class Migration
     }
 
     /**
-     * Create table
-     *
-     * @param Closure $closure
+     * Create the table out of the columns asked for
      *
      * @return bool
      */
-    public function createTable(Closure $closure): bool
+    public function createTable(): bool
     {
         if ($this->hasTable()) {
             throw new UnexpectedValueException(
                 sprintf('%s() creating table. Table "%s" already exists', __METHOD__, $this->model->getTable())
             );
         }
-
-        $closure($this);
 
         $columns = array_column($this->columns, 'name');
 
@@ -206,16 +202,12 @@ class Migration
     }
 
     /**
-     * Change table
-     *
-     * @param Closure $closure
+     * Apply the changes asked for to the table
      *
      * @return bool
      */
-    public function changeTable(Closure $closure): bool
+    public function changeTable(): bool
     {
-        $closure($this);
-
         if (! $this->columns) {
             return true;
         }
