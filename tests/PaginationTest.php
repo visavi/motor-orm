@@ -99,6 +99,17 @@ final class PaginationTest extends TestCase
     }
 
     /**
+     * A query asked for a page of nothing says so, whichever paginator
+     */
+    public function testPageOfNothing(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('at least one row');
+
+        Article::query()->paginate(0);
+    }
+
+    /**
      * An empty result set stays on the first page
      */
     public function testEmptyTotal(): void

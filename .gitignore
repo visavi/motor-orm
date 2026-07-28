@@ -4,3 +4,4 @@
 /tests/data/scratch.csv
 *.csv.tmp
 composer.lock
+/tests/data/bulk.csv

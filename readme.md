@@ -1,5 +1,10 @@
 # Motor ORM
 
+[![Packagist](https://img.shields.io/packagist/v/visavi/motor-orm.svg)](https://packagist.org/packages/visavi/motor-orm)
+[![PHP](https://img.shields.io/badge/php-%E2%89%A5%208.5-777bb4.svg)](https://www.php.net/releases/8.5/)
+[![Downloads](https://img.shields.io/packagist/dt/visavi/motor-orm.svg)](https://packagist.org/packages/visavi/motor-orm)
+[![License](https://img.shields.io/packagist/l/visavi/motor-orm.svg)](https://github.com/visavi/motor-orm/blob/master/composer.json)
+
 An object oriented way to work with text data stored in the file system.
 
 The data lives in plain RFC 4180 csv: a quote inside a value is written twice
@@ -20,15 +25,17 @@ composer require visavi/motor-orm
 
 ## Quick start
 
-The library is three things. A **model** says where the data lives, what the
-columns mean and what the table is related to. A **query** reads and writes it. A
-**record** holds one row.
+The library is three things:
 
-```
-Article::query()   ->   Query   ->   Record
-   Model                                │
-     └── casts, scopes, relations       └── values, save, delete
-```
+|            | what it is                    | what it carries                                      |
+|------------|-------------------------------|------------------------------------------------------|
+| **Model**  | `class Article extends Model` | path to the file, casts, scopes, relations           |
+| **Query**  | `Article::query()`            | conditions, sorting, pagination, writing             |
+| **Record** | `$article`                    | the values of a row, `save()`, `delete()`, relations |
+
+A model reads nothing until it is asked to. A query opens the file on the first
+read, not when it is built. A record knows its own row and the query it came
+from, and nothing else.
 
 ```php
 use MotorORM\Model;
@@ -57,8 +64,108 @@ data. A write that changes existing rows builds the new table beside the old one
 and puts it in place in a single atomic step, so a reader never sees a half
 written table and an interrupted write leaves the original untouched.
 
+### What it looks like together
+
+Two tables, a relation between them and a page of a listing, which is all a
+small section of a site comes down to:
+
+```php
+class Article extends Model
+{
+    public string $table = __DIR__ . '/data/articles.csv';
+
+    protected array $casts = ['user_id' => 'int', 'views' => 'int'];
+
+    public function user(): Relation
+    {
+        return $this->hasOne(User::class, 'id', 'user_id');
+    }
+
+    public function scopePublished(Query $query): Query
+    {
+        return $query->where('published', 1);
+    }
+}
+
+$articles = Article::query()
+    ->published()
+    ->whereLike('title', '%orm%')
+    ->orderByDesc('created_at')
+    ->paginate(10, (int) ($_GET['page'] ?? 1));
+
+foreach ($articles as $article) {
+    printf('%s by %s, %d views', $article->title, $article->user->login, $article->views);
+}
+
+echo $articles->withPath('/articles')->links();
+```
+
+The author of each article costs no read of its own here: `$article->user` on
+the first article reads the authors of all ten at once.
+
+## Performance
+
+A table of 50 000 rows (4 MB), PHP 8.5.7, best of five runs, each in its own
+process. `raw php` is `fopen` + `fgetcsv` + `array_combine` in a loop: no
+objects, no casts, no conditions to read, nothing but the file. It is the floor,
+and what the orm costs is the distance to it:
+
+| operation                          | Raw PHP           | Motor ORM         |           |
+|------------------------------------|-------------------|-------------------|-----------|
+| find a record by its key           | 67.1 ms, 0.6 MB   | 81.5 ms, 0.6 MB   | x1.22     |
+| count the rows a condition matches | 66.6 ms, 0.6 MB   | 81.8 ms, 0.6 MB   | x1.23     |
+| read the rows a condition matches  | 66.8 ms, 0.6 MB   | 83.0 ms, 0.6 MB   | x1.24     |
+| a page of ten rows                 | 0.1 ms, 0.6 MB    | 0.1 ms, 0.6 MB    | x1.47     |
+| the last ten, sorted               | 133.6 ms, 33.1 MB | 107.4 ms, 0.6 MB  | **x0.80** |
+| walk the whole table               | 66.0 ms, 0.6 MB   | 90.9 ms, 0.6 MB   | x1.38     |
+| read the whole table               | 67.7 ms, 29.6 MB  | 102.4 ms, 35.3 MB | x1.51     |
+
+What the orm costs on a scan is about a quarter of the time, and it goes on what
+it is taken for: reading the conditions, casting the values, objects instead of
+arrays.
+
+The sorted row stands out: the orm is faster than the raw code and spends 0.6 MB
+instead of 33. The naive version holds the table and sorts all of it, while a
+query with a `limit` carries only the rows that will be in the answer.
+
+Time is measured warm, memory cold. Loading the classes of the orm costs about a
+millisecond and is paid once per process: on a case that touches ten rows, that
+is what would be measured otherwise.
+
+To run it yourself:
+
+```bash
+php benchmarks/compare.php
+php benchmarks/compare.php --rows=200000 --runs=5
+```
+
+### What it costs in memory
+
+A csv row costs several times more in memory than in the file: an array of five
+columns is about 440 bytes, a `Record` on top of it about 690. A file of 41 MB,
+read whole, takes 347 MB.
+
+So what runs out is not the size of the table but the size of the result:
+
+|                                 | 500 000 rows, 41 MB |
+|---------------------------------|---------------------|
+| `cursor()` over the whole table | 890 ms, 0 MB        |
+| `count()`                       | 633 ms, 0 MB        |
+| `orderByDesc('id')->limit(10)`  | 1095 ms, 0 MB       |
+| `paginate(10)`                  | 638 ms, 0 MB        |
+| `get()` of the whole table      | 347 MB              |
+
+A table can be of any size as long as you do not ask for all of it at once. To
+walk it there is [`cursor()`](#walking-a-large-table), to show it
+[`paginate()`](#pagination).
+
+The other ceiling is time: a pass costs about 1.3 us a row, so a `where` that
+does not hit the head of the file takes about a second on 500 000 rows. Indexes
+are what saves you there, and there are none here.
+
 ## Contents
 
+- [Performance](#performance)
 - [Reading](#reading)
 - [Conditions](#conditions)
 - [Pattern match (Like)](#pattern-match-like)
@@ -320,14 +427,14 @@ same whether or not `id` is declared.
 
 Supported types:
 
-| Cast | Result |
-|---|---|
-| `int`, `integer` | `int` |
-| `real`, `float`, `double` | `float` |
-| `string` | `string` |
-| `bool`, `boolean` | `bool` |
-| `object` | `json_decode($value, false)` |
-| `array` | `json_decode($value, true)` |
+| Cast                      | Result                       |
+|---------------------------|------------------------------|
+| `int`, `integer`          | `int`                        |
+| `real`, `float`, `double` | `float`                      |
+| `string`                  | `string`                     |
+| `bool`, `boolean`         | `bool`                       |
+| `object`                  | `json_decode($value, false)` |
+| `array`                   | `json_decode($value, true)`  |
 
 Arrays and objects are written to a column as json, whether or not a cast was
 declared for it. A column that does not hold the json it was cast to is a broken
@@ -643,10 +750,10 @@ foreach ($articles as $article) {
 echo $articles->withPath('/articles')->links();
 ```
 
-| on 50 000 rows | first page | page 4 900 |
-| --- | --- | --- |
-| `paginate(10)` | 64.09 ms | 128.05 ms |
-| `simplePaginate(10)` | 1.10 ms | 62.07 ms |
+| on 50 000 rows       | first page | page 4 900 |
+|----------------------|------------|------------|
+| `paginate(10)`       | 64.09 ms   | 128.05 ms  |
+| `simplePaginate(10)` | 1.10 ms    | 62.07 ms   |
 
 Later pages still cost the walk to their offset, which nothing but an index can
 avoid. What the counting bought is gone: there is no `total()` and no
@@ -798,6 +905,19 @@ php benchmarks/bench.php --filter=find
 
 Each case runs in a process of its own, so the peak memory belongs to that case
 alone. The last column compares the memory spent against the size of the table.
+
+### Against raw php
+
+The same operations written with `fopen` + `fgetcsv`, side by side with the
+queries, which is [the table from the performance section](#performance):
+
+```bash
+composer compare
+
+php benchmarks/compare.php --rows=200000 --runs=5
+```
+
+The table is the one `bench` uses, so generating it once serves both.
 
 ## License
 

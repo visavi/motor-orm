@@ -14,6 +14,7 @@ use Iterator;
 use LimitIterator;
 use RuntimeException;
 use SplFileObject;
+use SplHeap;
 use UnexpectedValueException;
 
 /**
@@ -34,6 +35,15 @@ final class Query
         $this->mapper     = new RecordMapper($model, $this->table);
         $this->conditions = new Conditions();
     }
+
+    /**
+     * Rows a page may ask for before holding the whole order is cheaper
+     *
+     * Keeping a heap costs an insert per row, sorting once costs a sort. The
+     * fewer rows are wanted, the more the heap wins, and past a page or two
+     * the one sort at the end takes it back
+     */
+    private const int SORT_TAKE_LIMIT = 1000;
 
     /** The file the model stands for */
     private readonly Table $table;
@@ -73,11 +83,49 @@ final class Query
     /**
      * The rows this query asks for, filtered and in order
      *
+     * @param int|null $take how many rows from the head are going to be read,
+     *                       null when that is not known
+     *
      * @return Iterator
      */
-    private function pipeline(): Iterator
+    private function pipeline(?int $take = null): Iterator
     {
-        return $this->sorting($this->filtering($this->table->records()));
+        return $this->sorting($this->filtering($this->table->records()), $take);
+    }
+
+    /**
+     * The rows of a read, from the one to skip to to the last one wanted
+     *
+     * LimitIterator knows a limit of -1 as no limit at all, but has no notion
+     * of a read of nothing, and asking it for one is an error rather than an
+     * empty answer
+     *
+     * @param Iterator $iterator
+     * @param int      $offset
+     * @param int      $limit
+     *
+     * @return Iterator
+     */
+    private function limited(Iterator $iterator, int $offset, int $limit): Iterator
+    {
+        if ($limit === 0) {
+            return new ArrayIterator();
+        }
+
+        return new LimitIterator($iterator, $offset, $limit);
+    }
+
+    /**
+     * How many sorted rows a read of this query comes down to
+     *
+     * @param int $offset
+     * @param int $limit
+     *
+     * @return int|null null when the read has no end
+     */
+    private function take(int $offset, int $limit): ?int
+    {
+        return $limit < 0 ? null : $offset + $limit;
     }
 
     /**
@@ -312,7 +360,7 @@ final class Query
      */
     public function first(): ?Record
     {
-        $iterator = new LimitIterator($this->pipeline(), 0, 1);
+        $iterator = new LimitIterator($this->pipeline(1), 0, 1);
         $iterator->rewind();
 
         /* Reading the first match is enough, counting the whole table is not */
@@ -351,7 +399,7 @@ final class Query
      */
     public function get(): Collection
     {
-        $iterator = new LimitIterator($this->pipeline(), $this->offset, $this->limit);
+        $iterator = $this->limited($this->pipeline($this->take($this->offset, $this->limit)), $this->offset, $this->limit);
 
         return new Collection($this->hydrate($iterator));
     }
@@ -368,7 +416,7 @@ final class Query
      */
     public function cursor(): Generator
     {
-        $iterator = new LimitIterator($this->pipeline(), $this->offset, $this->limit);
+        $iterator = $this->limited($this->pipeline($this->take($this->offset, $this->limit)), $this->offset, $this->limit);
 
         $reader = $this->mapper->reader();
 
@@ -396,7 +444,7 @@ final class Query
         $page   = min(max(1, $page), Pagination::lastPageOf($total, $limit));
         $offset = $page * $limit - $limit;
 
-        $iterator = new LimitIterator($this->pipeline(), $offset, $limit);
+        $iterator = $this->limited($this->pipeline($offset + $limit), $offset, $limit);
 
         return new Pagination($this->hydrate($iterator), $total, $limit, $page);
     }
@@ -418,7 +466,7 @@ final class Query
         $page   = max(1, $page);
         $offset = $page * $limit - $limit;
 
-        $iterator = new LimitIterator($this->pipeline(), $offset, $limit + 1);
+        $iterator = new LimitIterator($this->pipeline($offset + $limit + 1), $offset, $limit + 1);
 
         $records = $this->hydrate($iterator);
         $hasMore = count($records) > $limit;
@@ -752,10 +800,11 @@ final class Query
      * Put the rows in the order that was asked for
      *
      * @param Iterator $iterator
+     * @param int|null $take how many rows from the head are going to be read
      *
      * @return Iterator
      */
-    private function sorting(Iterator $iterator): Iterator
+    private function sorting(Iterator $iterator, ?int $take): Iterator
     {
         if (! $this->orders) {
             return $iterator;
@@ -767,24 +816,84 @@ final class Query
             $orders[$this->table->keyOf($field)] = $sort === SortOrder::Asc;
         }
 
-        /* Sorting has to see every row, so here the whole result is held at once */
+        $comparer = static function (array $a, array $b) use ($orders): int {
+            foreach ($orders as $key => $asc) {
+                $retVal = $asc ? $a[$key] <=> $b[$key] : $b[$key] <=> $a[$key];
+
+                if ($retVal !== 0) {
+                    return $retVal;
+                }
+            }
+
+            return 0;
+        };
+
+        if ($take !== null && $take <= self::SORT_TAKE_LIMIT) {
+            return $this->leading($iterator, $comparer, $take);
+        }
+
+        /* Nothing says how much of the order is wanted, so all of it is held at once */
         $sorted = new ArrayIterator(iterator_to_array($iterator));
 
-        $sorted->uasort(
-            static function ($a, $b) use ($orders) {
-                foreach ($orders as $key => $asc) {
-                    $retVal = $asc ? $a[$key] <=> $b[$key] : $b[$key] <=> $a[$key];
-
-                    if ($retVal !== 0) {
-                        return $retVal;
-                    }
-                }
-
-                return 0;
-            }
-        );
+        $sorted->uasort($comparer);
 
         return $sorted;
+    }
+
+    /**
+     * The first rows of the order, without holding the rest
+     *
+     * Sorting still has to look at every row, but carrying every row is only
+     * needed when every row is wanted. For a page it is enough to keep the
+     * rows that would be on it: a heap holds the worst of them on top, so a
+     * row that cannot beat it is dropped where it is read
+     *
+     * @param Iterator $iterator
+     * @param Closure  $comparer
+     * @param int      $take
+     *
+     * @return Iterator
+     */
+    private function leading(Iterator $iterator, Closure $comparer, int $take): Iterator
+    {
+        if ($take === 0) {
+            return new ArrayIterator();
+        }
+
+        /* Rows the order cannot tell apart keep the order they were read in */
+        $sequence = 0;
+        $heap     = new class ($comparer) extends SplHeap {
+            public function __construct(private readonly Closure $comparer) {}
+
+            public function compare($value1, $value2): int
+            {
+                return ($this->comparer)($value1[1], $value2[1]) ?: $value1[0] <=> $value2[0];
+            }
+        };
+
+        foreach ($iterator as $row) {
+            $current = [$sequence++, $row];
+
+            if ($heap->count() < $take) {
+                $heap->insert($current);
+
+                continue;
+            }
+
+            /* The top is the worst of the rows kept, so it is the one to give way */
+            if ($heap->compare($current, $heap->top()) < 0) {
+                $heap->extract();
+                $heap->insert($current);
+            }
+        }
+
+        /* A heap gives up its rows worst first, and the head of the order is wanted */
+        $leading = [];
+        foreach ($heap as [, $row]) {
+            array_unshift($leading, $row);
+        }
+
+        return new ArrayIterator($leading);
     }
 
     /**

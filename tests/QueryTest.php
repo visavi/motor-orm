@@ -375,6 +375,17 @@ final class QueryTest extends TestCase
     }
 
     /**
+     * A limit of nothing reads nothing, sorted or not
+     *
+     */
+    public function testLimitZeroReadsNothing(): void
+    {
+        $this->assertCount(0, Article::query()->limit(0)->get());
+        $this->assertCount(0, Article::query()->orderByDesc('id')->limit(0)->get());
+        $this->assertSame([], iterator_to_array(Article::query()->limit(0)->cursor()));
+    }
+
+    /**
      * Negative limit
      *
      */

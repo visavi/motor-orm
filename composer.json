@@ -35,6 +35,7 @@
     "minimum-stability": "stable",
     "scripts": {
         "test": "phpunit",
-        "bench": "php benchmarks/bench.php"
+        "bench": "php benchmarks/bench.php",
+        "compare": "php benchmarks/compare.php"
     }
 }
