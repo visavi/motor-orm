@@ -4,15 +4,28 @@ namespace MotorORM\Tests;
 
 use InvalidArgumentException;
 use MotorORM\Collection;
+use MotorORM\Model;
+use MotorORM\Query;
+use MotorORM\Record;
+use MotorORM\RecordMapper;
 use MotorORM\Relation;
+use MotorORM\RelationLoader;
 use MotorORM\RelationType;
+use MotorORM\Table;
 use MotorORM\Tests\Models\Story;
 use MotorORM\Tests\Models\User;
-use MotorORM\Query;
 use PHPUnit\Framework\Attributes\CoversClass;
 use RuntimeException;
 
 #[CoversClass(Query::class)]
+#[CoversClass(Model::class)]
+#[CoversClass(Table::class)]
+#[CoversClass(Relation::class)]
+#[CoversClass(RelationLoader::class)]
+#[CoversClass(RelationType::class)]
+#[CoversClass(RecordMapper::class)]
+#[CoversClass(Record::class)]
+#[CoversClass(Collection::class)]
 final class RelationTest extends TestCase
 {
     /**

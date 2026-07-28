@@ -4,12 +4,21 @@ namespace MotorORM\Tests;
 
 use MotorORM\Model;
 use MotorORM\Query;
+use MotorORM\Record;
+use MotorORM\RecordMapper;
+use MotorORM\Table;
+use MotorORM\TableWriter;
 use MotorORM\Tests\Models\Bulk;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SplFileObject;
 use UnexpectedValueException;
 
 #[CoversClass(Query::class)]
+#[CoversClass(Model::class)]
+#[CoversClass(Table::class)]
+#[CoversClass(TableWriter::class)]
+#[CoversClass(RecordMapper::class)]
+#[CoversClass(Record::class)]
 final class InsertTest extends TestCase
 {
     /** Rows the table holds before anything is added to it */

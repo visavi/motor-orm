@@ -3,12 +3,18 @@
 namespace MotorORM\Tests;
 
 use MotorORM\Migration;
+use MotorORM\Model;
+use MotorORM\Query;
+use MotorORM\Table;
 use MotorORM\Tests\Models\Scratch;
 use MotorORM\Tests\Models\Structure;
 use PHPUnit\Framework\Attributes\CoversClass;
 use UnexpectedValueException;
 
 #[CoversClass(Migration::class)]
+#[CoversClass(Model::class)]
+#[CoversClass(Table::class)]
+#[CoversClass(Query::class)]
 final class MigrationTest extends TestCase
 {
     /**

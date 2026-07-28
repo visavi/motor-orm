@@ -4,7 +4,13 @@ namespace MotorORM\Tests;
 
 use BadMethodCallException;
 use InvalidArgumentException;
+use MotorORM\Collection;
+use MotorORM\Conditions;
+use MotorORM\Model;
 use MotorORM\Query;
+use MotorORM\Record;
+use MotorORM\RecordMapper;
+use MotorORM\Table;
 use MotorORM\Tests\Models\Article;
 use MotorORM\Tests\Models\CastedEvent;
 use MotorORM\Tests\Models\Event;
@@ -16,6 +22,12 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use UnexpectedValueException;
 
 #[CoversClass(Query::class)]
+#[CoversClass(Model::class)]
+#[CoversClass(Table::class)]
+#[CoversClass(Conditions::class)]
+#[CoversClass(RecordMapper::class)]
+#[CoversClass(Record::class)]
+#[CoversClass(Collection::class)]
 final class QueryTest extends TestCase
 {
     /**

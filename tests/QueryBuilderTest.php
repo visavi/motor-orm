@@ -3,22 +3,34 @@
 namespace MotorORM\Tests;
 
 use MotorORM\Collection;
+use MotorORM\Conditions;
+use MotorORM\Model;
 use MotorORM\Pagination;
+use MotorORM\Query;
+use MotorORM\Record;
+use MotorORM\RecordMapper;
+use MotorORM\SortOrder;
+use MotorORM\Table;
+use MotorORM\TableWriter;
 use MotorORM\Tests\Models\Article;
-use MotorORM\Tests\Models\Setting;
 use MotorORM\Tests\Models\Item;
 use MotorORM\Tests\Models\Reserved;
 use MotorORM\Tests\Models\Scratch;
+use MotorORM\Tests\Models\Setting;
 use MotorORM\Tests\Models\Story;
-use MotorORM\Query;
-use MotorORM\SortOrder;
-use MotorORM\Table;
 use PHPUnit\Framework\Attributes\CoversClass;
 use RuntimeException;
 use SplFileObject;
 use UnexpectedValueException;
 
 #[CoversClass(Query::class)]
+#[CoversClass(Model::class)]
+#[CoversClass(Table::class)]
+#[CoversClass(TableWriter::class)]
+#[CoversClass(Conditions::class)]
+#[CoversClass(RecordMapper::class)]
+#[CoversClass(Record::class)]
+#[CoversClass(Collection::class)]
 final class QueryBuilderTest extends TestCase
 {
     /**
