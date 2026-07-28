@@ -64,6 +64,23 @@ final class RelationTest extends TestCase
     }
 
     /**
+     * A record loads its relation for the result it was read with, whatever
+     * the query has read since
+     *
+     */
+    public function testRelationOfRecordFromAnEarlierRead(): void
+    {
+        $query   = Story::query();
+        $stories = $query->get();
+
+        /* The same builder reads again, and what it holds is no longer that result */
+        $query->where('id', 3)->get();
+
+        $this->assertCount(2, $stories[0]->comments);
+        $this->assertEquals('Comment1', $stories[0]->comments[0]->text);
+    }
+
+    /**
      * Eager loaded hasOne relation
      *
      */
@@ -106,6 +123,65 @@ final class RelationTest extends TestCase
         $this->assertCount(1, $stories[1]->tags);
         $this->assertEquals('tag3', $stories[1]->tags[0]->name);
         $this->assertCount(0, $stories[2]->tags);
+    }
+
+    /**
+     * The conditions a relation was declared with narrow what it loads
+     *
+     */
+    public function testConstrainedRelation(): void
+    {
+        $story = Story::query()->find(1);
+
+        $this->assertCount(2, $story->comments);
+        $this->assertCount(1, $story->laterComments);
+        $this->assertEquals('Comment2', $story->laterComments[0]->text);
+    }
+
+    /**
+     * A constrained relation eager loaded for a whole result
+     *
+     */
+    public function testWithConstrainedRelation(): void
+    {
+        $stories = Story::query()->with('laterComments')->get();
+
+        $this->assertCount(1, $stories[0]->laterComments);
+        $this->assertEquals('Comment2', $stories[0]->laterComments[0]->text);
+        $this->assertCount(1, $stories[1]->laterComments);
+        $this->assertEquals('Comment3', $stories[1]->laterComments[0]->text);
+        $this->assertCount(0, $stories[2]->laterComments);
+    }
+
+    /**
+     * A relation is read for the whole result at once, so a limit in its
+     * declaration limits that one read and not each record
+     *
+     */
+    public function testConstraintLimitsTheWholeRead(): void
+    {
+        /* Read on its own, the limit is the record's own */
+        $this->assertCount(1, Story::query()->find(1)->lastComment);
+
+        $stories = Story::query()->with('lastComment')->get();
+
+        /* Read for three stories at once, the one comment goes to whoever it belongs to */
+        $this->assertCount(0, $stories[0]->lastComment);
+        $this->assertCount(1, $stories[1]->lastComment);
+        $this->assertEquals('Comment3', $stories[1]->lastComment[0]->text);
+    }
+
+    /**
+     * A relation through an intermediate table is narrowed the same way
+     *
+     */
+    public function testConstrainedRelationThrough(): void
+    {
+        $stories = Story::query()->with('namedTags')->get();
+
+        $this->assertCount(1, $stories[0]->namedTags);
+        $this->assertEquals('tag2', $stories[0]->namedTags[0]->name);
+        $this->assertCount(0, $stories[1]->namedTags);
     }
 
     /**

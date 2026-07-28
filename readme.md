@@ -329,6 +329,12 @@ Supported types:
 | `object` | `json_decode($value, false)` |
 | `array` | `json_decode($value, true)` |
 
+Arrays and objects are written to a column as json, whether or not a cast was
+declared for it. A column that does not hold the json it was cast to is a broken
+table, so reading it raises an `UnexpectedValueException` instead of giving back
+a `null`. Writing a value json cannot carry (`NAN`, `INF`, broken UTF-8) raises
+the same, and the table is left as it was.
+
 ## Scopes
 
 A scope is a method prefixed with `scope`. The prefix is how the ORM tells it apart
@@ -444,6 +450,38 @@ class Story extends Model
     }
 }
 ```
+
+### Constrained relations
+
+`constrain()` puts conditions on a relation that it is always loaded with. The
+closure is given the query on the related table:
+
+```php
+class Story extends Model
+{
+    public function approvedComments(): Relation
+    {
+        return $this->hasMany(Comment::class)->constrain(
+            static fn (Query $query) => $query->where('approved', 1)->orderByDesc('id')
+        );
+    }
+}
+```
+
+Works on all three kinds of relation, and the same way on access as through
+`with()`.
+
+**A `limit()` or an `offset()` in a constraint applies to the whole read, not to
+each record.** A relation is read once for the whole result, so `limit(1)` gives
+one row for that result, and it goes to whichever record it belongs to:
+
+```php
+Story::query()->find(1)->lastComment;            // one story, one row, its own
+Story::query()->with('lastComment')->get();      // three stories, one row between them
+```
+
+For the latest of each, sort the relation and take the first element of the
+collection.
 
 ## Loading relations
 

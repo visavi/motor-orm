@@ -46,4 +46,40 @@ class Story extends Model
     {
         return $this->hasManyThrough(Tag::class, TagStory::class);
     }
+
+    /**
+     * Comments past the first one, a relation narrowed by its declaration
+     *
+     * @return Relation
+     */
+    public function laterComments(): Relation
+    {
+        return $this->hasMany(Comment::class)->constrain(
+            static fn (Query $query) => $query->where('id', '>', 1)
+        );
+    }
+
+    /**
+     * A relation whose declaration limits it
+     *
+     * @return Relation
+     */
+    public function lastComment(): Relation
+    {
+        return $this->hasMany(Comment::class)->constrain(
+            static fn (Query $query) => $query->orderByDesc('id')->limit(1)
+        );
+    }
+
+    /**
+     * Tags of one name, narrowed through the intermediate table
+     *
+     * @return Relation
+     */
+    public function namedTags(): Relation
+    {
+        return $this->hasManyThrough(Tag::class, TagStory::class)->constrain(
+            static fn (Query $query) => $query->where('name', 'tag2')
+        );
+    }
 }

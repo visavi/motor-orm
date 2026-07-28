@@ -21,6 +21,14 @@ class Record
     private array $relations = [];
 
     /**
+     * The records this one was read together with, itself among them
+     *
+     * A relation touched later is loaded for the whole result at once, and the
+     * result is the one the record came from, not whatever its query read last
+     */
+    private array $siblings = [];
+
+    /**
      * @param Query $query the query the record was read with
      * @param array   $attr  column name => value
      */
@@ -109,6 +117,18 @@ class Record
     }
 
     /**
+     * Tell the record what it was read together with
+     *
+     * @param array<Record> $records
+     *
+     * @return void
+     */
+    public function setSiblings(array $records): void
+    {
+        $this->siblings = $records;
+    }
+
+    /**
      * Attach a loaded relation
      *
      * @param string $relation
@@ -141,7 +161,7 @@ class Record
         if (! array_key_exists($field, $this->attr) && $this->query->model()->isRelation($field)) {
             if (! array_key_exists($field, $this->relations)) {
                 /* Loading it for every record of the same result costs one query, not one per record */
-                $this->query->loadRelation($this->query->rows() ?: [$this], $field);
+                $this->query->loadRelation($this->siblings ?: [$this], $field);
             }
 
             return $this->relations[$field];

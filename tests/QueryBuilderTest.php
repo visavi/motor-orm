@@ -510,6 +510,37 @@ final class QueryBuilderTest extends TestCase
     }
 
     /**
+     * A value json cannot hold is an error, not a row with a missing column
+     */
+    public function testUnencodableValueIsAnError(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('value');
+
+        Item::query()->create([
+            'name'  => 'name1',
+            'value' => ['rate' => NAN],
+        ]);
+    }
+
+    /**
+     * A write that fails halfway leaves the table as it was
+     */
+    public function testFailedWriteLeavesTheTableAlone(): void
+    {
+        Item::query()->create(['name' => 'one', 'value' => 'first']);
+
+        try {
+            Item::query()->where('id', 1)->update(['value' => ['rate' => NAN]]);
+        } catch (UnexpectedValueException) {
+            // the row is the point, not the exception
+        }
+
+        $this->assertCount(1, Item::query()->get());
+        $this->assertEquals('first', Item::query()->find(1)->value);
+    }
+
+    /**
      * Create multiple fields
      */
     public function testMultipleCreate(): void

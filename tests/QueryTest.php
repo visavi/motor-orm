@@ -8,6 +8,7 @@ use MotorORM\Query;
 use MotorORM\Tests\Models\Article;
 use MotorORM\Tests\Models\CastedEvent;
 use MotorORM\Tests\Models\Event;
+use MotorORM\Tests\Models\Payload;
 use MotorORM\Tests\Models\Setting;
 use MotorORM\Tests\Models\StringKeyEvent;
 use MotorORM\Tests\Models\TagStory;
@@ -304,6 +305,27 @@ final class QueryTest extends TestCase
         /* The neighbouring dates were not declared, so they stay as they were read */
         $this->assertSame('2026-07-28 12:30:00', $find->created_at);
         $this->assertSame('2026-07-28 13:15:00', $find->updated_at);
+    }
+
+    /**
+     * A column cast to an array is read back as one
+     *
+     */
+    public function testArrayCast(): void
+    {
+        $this->assertSame(['tags' => ['a', 'b'], 'hits' => 3], Payload::query()->find(1)->meta);
+    }
+
+    /**
+     * Json a column cannot hold is an error, not a null
+     *
+     */
+    public function testBrokenJsonIsAnError(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('meta');
+
+        Payload::query()->find(2);
     }
 
     /**

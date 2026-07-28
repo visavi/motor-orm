@@ -30,20 +30,25 @@ final class Query
      */
     public function __construct(private readonly Model $model)
     {
-        $this->table = new Table($model);
+        $this->table      = new Table($model);
+        $this->mapper     = new RecordMapper($model, $this->table);
+        $this->conditions = new Conditions();
     }
 
     /** The file the model stands for */
     private readonly Table $table;
 
+    /** Rows in, values out */
+    private readonly RecordMapper $mapper;
+
+    /** What the rows have to satisfy */
+    private readonly Conditions $conditions;
+
     private int $offset = 0;
     private int $limit = -1;
 
     private array $orders = [];
-    /** Records of the last result, so a relation loads for all of them at once */
-    private array $rows = [];
     private array $with = [];
-    private array $where = [];
 
     /**
      * Get headers
@@ -108,42 +113,17 @@ final class Query
             /* Only the collected conditions are needed, so the table stays closed */
             $field($builder = new self($this->model));
 
-            $this->where[$operator][] = $builder->where;
+            $this->conditions->group($operator, $builder->conditions);
         } else {
             if (func_num_args() === 2) {
                 $value     = $condition;
                 $condition = '=';
             }
 
-            $this->where[$operator][] = [
-                'field'     => $field,
-                'condition' => $this->comparison($condition),
-                'value'     => (string) $value,
-            ];
+            $this->conditions->compare($operator, $field, $condition, $value);
         }
 
         return $this;
-    }
-
-    /**
-     * The comparison a condition asks for
-     *
-     * A misspelled operator used to fall through to equality and quietly
-     * return nothing, so only these are accepted. Patterns and sets have
-     * methods of their own
-     *
-     * @param mixed $condition
-     *
-     * @return string
-     */
-    private function comparison(mixed $condition): string
-    {
-        return match ($condition) {
-            '=', '!=', '<>', '>', '>=', '<', '<=' => $condition,
-            default => throw new InvalidArgumentException(
-                sprintf('%s() unknown operator "%s"', __METHOD__, is_scalar($condition) ? $condition : get_debug_type($condition))
-            ),
-        };
     }
 
     /**
@@ -161,7 +141,7 @@ final class Query
             /* Only the collected conditions are needed, so the table stays closed */
             $field($builder = new self($this->model));
 
-            $this->where['or'][] = $builder->where;
+            $this->conditions->group('or', $builder->conditions);
         } else {
             if (func_num_args() === 2) {
                 $value     = $condition;
@@ -247,12 +227,7 @@ final class Query
      */
     private function like(string $field, string $value, bool $caseSensitive, bool $not, string $operator): self
     {
-        $this->where[$operator][] = [
-            'field'         => $field,
-            'condition'     => $not ? 'not_like' : 'like',
-            'value'         => $value,
-            'caseSensitive' => $caseSensitive,
-        ];
+        $this->conditions->pattern($operator, $field, $value, $caseSensitive, $not);
 
         return $this;
     }
@@ -268,13 +243,7 @@ final class Query
      */
     public function whereIn(string $field, array $values, string $operator = 'and'): self
     {
-        $values = array_flip($values);
-
-        $this->where[$operator][] = [
-            'field'     => $field,
-            'condition' => 'in',
-            'value'     => $values
-        ];
+        $this->conditions->set($operator, $field, $values, false);
 
         return $this;
     }
@@ -290,13 +259,7 @@ final class Query
      */
     public function whereNotIn(string $field, array $values, string $operator = 'and'): self
     {
-        $values = array_flip($values);
-
-        $this->where[$operator][] = [
-            'field'     => $field,
-            'condition' => 'not_in',
-            'value'     => $values
-        ];
+        $this->conditions->set($operator, $field, $values, true);
 
         return $this;
     }
@@ -357,13 +320,11 @@ final class Query
             return null;
         }
 
-        $record = new Record($this, $this->combiner()($iterator->current()));
+        $record = new Record($this, $this->mapper->read($iterator->current()));
 
         /* A record read on its own has no siblings, its relations load for itself */
-        $this->rows = [$record];
-
         foreach ($this->with as $with) {
-            $this->loadRelation($this->rows, $with);
+            $this->loadRelation([$record], $with);
         }
 
         return $record;
@@ -392,7 +353,7 @@ final class Query
     {
         $iterator = new LimitIterator($this->pipeline(), $this->offset, $this->limit);
 
-        return new Collection($this->mapper($iterator));
+        return new Collection($this->hydrate($iterator));
     }
 
     /**
@@ -409,10 +370,10 @@ final class Query
     {
         $iterator = new LimitIterator($this->pipeline(), $this->offset, $this->limit);
 
-        $combiner = $this->combiner();
+        $reader = $this->mapper->reader();
 
         foreach ($iterator as $line) {
-            yield new Record($this, $combiner($line));
+            yield new Record($this, $reader($line));
         }
     }
 
@@ -437,7 +398,7 @@ final class Query
 
         $iterator = new LimitIterator($this->pipeline(), $offset, $limit);
 
-        return new Pagination($this->mapper($iterator), $total, $limit, $page);
+        return new Pagination($this->hydrate($iterator), $total, $limit, $page);
     }
 
     /**
@@ -459,13 +420,14 @@ final class Query
 
         $iterator = new LimitIterator($this->pipeline(), $offset, $limit + 1);
 
-        $records = $this->mapper($iterator);
+        $records = $this->hydrate($iterator);
         $hasMore = count($records) > $limit;
 
         if ($hasMore) {
             /* The row that told us was never part of the page */
             array_pop($records);
-            $this->rows = $records;
+
+            $this->siblings($records);
         }
 
         return new SimplePagination($records, $limit, $page, $hasMore);
@@ -559,7 +521,7 @@ final class Query
             }
 
             $current = array_replace($fields, $values);
-            $current = $this->prepare($current);
+            $current = $this->mapper->write($current);
             $this->table->file()->fputcsv($current);
         } finally {
             flock($lock, LOCK_UN);
@@ -583,7 +545,7 @@ final class Query
 
         $this->table->rewrite(function (array &$current, SplFileObject $target) use (&$result, $attr, $key) {
             if ((string) $current[0] === $key) {
-                $current = $this->prepare($attr);
+                $current = $this->mapper->write($attr);
 
                 $result = true;
             }
@@ -612,13 +574,13 @@ final class Query
         $affectedRows = 0;
         $ids          = $this->primaryKeys($this->filtering($this->table->records()));
 
-        $combiner = $this->combiner();
+        $reader = $this->mapper->reader();
 
-        $this->table->rewrite(function (array &$current, SplFileObject $target) use ($combiner, $ids, $values, &$affectedRows) {
+        $this->table->rewrite(function (array &$current, SplFileObject $target) use ($reader, $ids, $values, &$affectedRows) {
             if (isset($ids[$current[0]])) {
                 $affectedRows++;
-                $current = array_replace($combiner($current), $values);
-                $current = $this->prepare($current);
+                $current = array_replace($reader($current), $values);
+                $current = $this->mapper->write($current);
             }
 
             $target->fputcsv($current);
@@ -710,66 +672,22 @@ final class Query
     }
 
     /**
-     * Combine fields
-     *
-     * @return Closure
-     */
-    private function combiner(): Closure
-    {
-        $headers    = $this->headers();
-        $fieldCount = count($headers);
-        $casts      = $this->model->getCasts();
-        $key        = $this->getPrimaryKey();
-
-        /* The key is cast by the orm that generated it, unless the model says otherwise */
-        $primary = $key !== null && ! isset($casts[$key]) ? $key : null;
-
-        return function (array $record) use ($headers, $fieldCount, $casts, $primary): array {
-            if (count($record) !== $fieldCount) {
-                $record = array_slice(array_pad($record, $fieldCount, null), 0, $fieldCount);
-            }
-
-            $record = array_combine($headers, $record);
-
-            foreach ($record as $field => $value) {
-                if ($value === '') {
-                    $record[$field] = null;
-                } elseif (isset($casts[$field])) {
-                    $record[$field] = $this->cast($casts[$field], $value);
-                }
-            }
-
-            /* A generated key is a number and reads back as one, a key that is not stays a string */
-            if ($primary !== null && is_numeric($record[$primary])) {
-                $record[$primary] = (int) $record[$primary];
-            }
-
-            return $record;
-        };
-    }
-
-    /**
      * Build a model per record, with the eager loaded relations attached
      *
      * @param iterable $values
      *
      * @return Record[]
      */
-    private function mapper(iterable $values): array
+    private function hydrate(iterable $values): array
     {
-        $combiner = $this->combiner();
+        $reader = $this->mapper->reader();
 
         $rows = [];
         foreach ($values as $line) {
-            $rows[] = new Record($this, $combiner($line));
+            $rows[] = new Record($this, $reader($line));
         }
 
-        /*
-         * The query holds on to the whole result, so that touching a relation
-         * on one record later can load it for all of them at once instead of
-         * scanning the related table once per record
-         */
-        $this->rows = $rows;
+        $this->siblings($rows);
 
         foreach ($this->with as $with) {
             if ($rows) {
@@ -778,6 +696,24 @@ final class Query
         }
 
         return $rows;
+    }
+
+    /**
+     * Let every record of a result know the rest of it
+     *
+     * The result belongs to the records, not to the query that read it: a
+     * relation touched on a record long after still loads for the records it
+     * was read with, and the query is free to read something else meanwhile
+     *
+     * @param array<Record> $rows
+     *
+     * @return void
+     */
+    private function siblings(array $rows): void
+    {
+        foreach ($rows as $row) {
+            $row->setSiblings($rows);
+        }
     }
 
     /**
@@ -802,13 +738,13 @@ final class Query
      */
     private function filtering(Iterator $iterator): Iterator
     {
-        if (! $this->where) {
+        if ($this->conditions->isEmpty()) {
             return $iterator;
         }
 
         return new CallbackFilterIterator(
             $iterator,
-            fn ($current) => $this->checker($this->where, $current)
+            fn ($current) => $this->conditions->match($current, $this->table)
         );
     }
 
@@ -849,145 +785,6 @@ final class Query
         );
 
         return $sorted;
-    }
-
-    /**
-     * Condition operator
-     *
-     * @param mixed $field
-     * @param string $condition
-     * @param mixed $value
-     *
-     * @return bool
-     */
-    private function condition(mixed $field, string $condition, mixed $value = null, bool $caseSensitive = false): bool
-    {
-        return match ($condition) {
-            '!=', '<>' => $field !== $value,
-            '>=' => $field >= $value,
-            '<=' => $field <= $value,
-            '>' => $field > $value,
-            '<' => $field < $value,
-            'in' => isset($value[$field]),
-            'not_in' => ! isset($value[$field]),
-            'like' => self::matches((string) $field, $value, $caseSensitive),
-            'not_like' => ! self::matches((string) $field, $value, $caseSensitive),
-            default => $field === $value,
-        };
-    }
-
-    /**
-     * Like comparison
-     *
-     * @param mixed $field
-     * @param mixed $value
-     *
-     * @return bool
-     */
-    private static function matches(string $field, string $value, bool $caseSensitive): bool
-    {
-        if (! $caseSensitive) {
-            /* Lowering both sides beats a case-insensitive search on each of them */
-            $field = mb_strtolower($field, 'UTF-8');
-            $value = mb_strtolower($value, 'UTF-8');
-        }
-
-        $left  = str_starts_with($value, '%');
-        $right = str_ends_with($value, '%');
-
-        if (! $left && ! $right) {
-            return $field === $value;
-        }
-
-        $needle = trim($value, '%');
-
-        return match (true) {
-            $left && $right => str_contains($field, $needle),
-            $left           => str_ends_with($field, $needle),
-            default         => str_starts_with($field, $needle),
-        };
-    }
-
-    /**
-     * Case-insensitive comparison
-     *
-     * @param mixed $field
-     * @param mixed $value
-     *
-     * @return bool
-     */
-    /**
-     *  Cast
-     *
-     * @param string $cast
-     * @param mixed  $value
-     *
-     * @return mixed
-     */
-    private function cast(string $cast, mixed $value): mixed
-    {
-        return match ($cast) {
-            'int', 'integer' => (int) $value,
-            'real', 'float', 'double' => (float) $value,
-            'string' => (string) $value,
-            'bool', 'boolean' => (bool) $value,
-            'object' => json_decode($value, false),
-            'array' => json_decode($value, true),
-            default => $value,
-        };
-    }
-
-    /**
-     * Prepare
-     *
-     * @param $current
-     *
-     * @return array
-     */
-    private function prepare($current): array
-    {
-        return array_map(static function ($value) {
-            if ($value === false) {
-                return '0';
-            }
-
-            if (is_array($value) || is_object($value)) {
-                return json_encode($value, JSON_UNESCAPED_UNICODE);
-            }
-
-            return (string) $value;
-        }, $current);
-    }
-
-    /**
-     * Checker condition
-     *
-     * @param array $wheres
-     * @param array $args
-     * @param mixed $operator
-     *
-     * @return bool
-     */
-    private function checker(array $wheres, array $args, mixed $operator = 'or'): bool
-    {
-        $isOr = $operator === 'or';
-
-        foreach ($wheres as $key => $where) {
-            if (isset($where['field'])) {
-                $field  = $args[$this->table->keyOf($where['field'])];
-                $result = $this->condition($field, $where['condition'], $where['value'], $where['caseSensitive'] ?? false);
-            } else {
-                /* A nested group is stored under a numeric key, its own keys carry the operators */
-                $result = $this->checker($where, $args, is_string($key) ? $key : 'or');
-            }
-
-            /* A true settles an or, a false settles an and */
-            if ($isOr === $result) {
-                return $result;
-            }
-        }
-
-        return ! $isOr;
     }
 
     /**
@@ -1033,20 +830,6 @@ final class Query
         }
 
         return $ids;
-    }
-
-    /**
-     * Set where
-     *
-     * @param array $where
-     *
-     * @return $this
-     */
-    private function setWhere(array $where): self
-    {
-        $this->where = $where;
-
-        return $this;
     }
 
     /**
@@ -1097,15 +880,5 @@ final class Query
     public function model(): Model
     {
         return $this->model;
-    }
-
-    /**
-     * Records of the last result
-     *
-     * @return Record[]
-     */
-    public function rows(): array
-    {
-        return $this->rows;
     }
 }
