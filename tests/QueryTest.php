@@ -239,6 +239,60 @@ final class QueryTest extends TestCase
     }
 
     /**
+     * A read started while another one is going on leaves it alone
+     *
+     * The same query answers again and again, and asking it in the middle of
+     * a walk it is already handing out must not cut that walk short
+     */
+    public function testReadsCanOverlap(): void
+    {
+        $query = Article::query();
+        $total = $query->count();
+
+        $counts = [];
+        foreach ($query->cursor() as $article) {
+            $counts[] = $query->count();
+        }
+
+        $this->assertCount($total, $counts);
+        $this->assertSame(array_fill(0, $total, $total), $counts);
+    }
+
+    /**
+     * The same holds for two walks of one query at once
+     */
+    public function testWalksCanBeNested(): void
+    {
+        $query = Article::query();
+        $total = $query->count();
+
+        $outer = 0;
+        $inner = 0;
+        foreach ($query->cursor() as $article) {
+            $outer++;
+
+            foreach ($query->cursor() as $nested) {
+                $inner++;
+            }
+        }
+
+        $this->assertSame($total, $outer);
+        $this->assertSame($total * $total, $inner);
+    }
+
+    /**
+     * A row is counted once, even when it is the first of the table
+     *
+     * The column names are looked up while the rows are already being read,
+     * and looking them up must not move the reading along
+     */
+    public function testFirstRowIsCountedOnce(): void
+    {
+        $this->assertSame(1, Article::query()->where('id', 1)->count());
+        $this->assertTrue(Article::query()->where('id', 1)->exists());
+    }
+
+    /**
      * Casts
      *
      */

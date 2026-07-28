@@ -87,7 +87,7 @@ final class SimplePaginationTest extends TestCase
      */
     public function testItems(): void
     {
-        $items = (new SimplePagination(self::rows(10), 10, 3, true))->withPath('/stories')->pages();
+        $items = new SimplePagination(self::rows(10), 10, 3, true)->withPath('/stories')->pages();
 
         $this->assertContainsOnlyInstancesOf(Page::class, $items);
         $this->assertCount(2, $items);
@@ -106,7 +106,7 @@ final class SimplePaginationTest extends TestCase
      */
     public function testItemsOnTheFirstPage(): void
     {
-        $items = (new SimplePagination(self::rows(10), 10, 1, true))->withPath('/stories')->pages();
+        $items = new SimplePagination(self::rows(10), 10, 1, true)->withPath('/stories')->pages();
 
         $this->assertCount(1, $items);
         $this->assertEquals('»', $items[0]->name);
@@ -117,7 +117,7 @@ final class SimplePaginationTest extends TestCase
      */
     public function testItemsOnTheLastPage(): void
     {
-        $items = (new SimplePagination(self::rows(3), 10, 4, false))->withPath('/stories')->pages();
+        $items = new SimplePagination(self::rows(3), 10, 4, false)->withPath('/stories')->pages();
 
         $this->assertCount(1, $items);
         $this->assertEquals('«', $items[0]->name);
@@ -129,7 +129,7 @@ final class SimplePaginationTest extends TestCase
      */
     public function testLinks(): void
     {
-        $links = (new SimplePagination(self::rows(10), 10, 3, true))->withPath('/stories')->links();
+        $links = new SimplePagination(self::rows(10), 10, 3, true)->withPath('/stories')->links();
 
         $this->assertStringContainsString('pagination', $links);
         $this->assertStringContainsString('href="/stories?page=2"', $links);
@@ -141,7 +141,7 @@ final class SimplePaginationTest extends TestCase
      */
     public function testUrl(): void
     {
-        $paginator = (new SimplePagination(self::rows(10), 10, 3, true))
+        $paginator = new SimplePagination(self::rows(10), 10, 3, true)
             ->withPath('/stories')
             ->appends(['sort' => 'title']);
 

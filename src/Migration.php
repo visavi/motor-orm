@@ -24,17 +24,6 @@ class Migration
     }
 
     /**
-     * Open the table on first use, which requires it to exist. Creating
-     * one goes through createTable().
-     *
-     * @return SplFileObject
-     */
-    protected function file(): SplFileObject
-    {
-        return $this->table->file();
-    }
-
-    /**
      * Set create column
      *
      * @param string $column

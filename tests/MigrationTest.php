@@ -16,12 +16,12 @@ final class MigrationTest extends TestCase
      */
     protected function setUp(): void
     {
-        @unlink((new Scratch())->getPath());
+        @unlink(new Scratch()->getPath());
     }
 
     protected function tearDown(): void
     {
-        @unlink((new Scratch())->getPath());
+        @unlink(new Scratch()->getPath());
     }
 
     /**
@@ -210,7 +210,7 @@ final class MigrationTest extends TestCase
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessage('does not exist');
 
-        (new Migration(new Scratch()))->deleteTable();
+        new Migration(new Scratch())->deleteTable();
     }
 
     /**
@@ -221,7 +221,7 @@ final class MigrationTest extends TestCase
         $migration = new Migration(new Scratch());
 
         $this->assertFalse($migration->hasTable());
-        $this->assertFileDoesNotExist((new Scratch())->getPath());
+        $this->assertFileDoesNotExist(new Scratch()->getPath());
     }
 
     /**
@@ -239,6 +239,6 @@ final class MigrationTest extends TestCase
         $migration->deleteTable();
 
         $this->assertFalse($migration->hasTable());
-        $this->assertFileDoesNotExist((new Scratch())->getPath());
+        $this->assertFileDoesNotExist(new Scratch()->getPath());
     }
 }

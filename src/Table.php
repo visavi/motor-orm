@@ -31,8 +31,6 @@ final class Table
     /** Column name => position, resolved along with the headers */
     private array $headerKeys = [];
 
-    private ?SplFileObject $file = null;
-
     /**
      * @param Model $model the table being read
      */
@@ -42,17 +40,23 @@ final class Table
      * The table file, opened when something is finally read from it
      *
      * Collecting conditions touches no file, so a query that is never run and
-     * a group of conditions built inside a closure both stay off the disk
+     * a group of conditions built inside a closure both stay off the disk. A
+     * handle is never held on to: a write replaces the table by a rename, and
+     * one kept open would point at a file that is no longer it
      *
      * @return SplFileObject
      */
     public function file(): SplFileObject
     {
-        return $this->file ??= $this->model->file();
+        return $this->model->file();
     }
 
     /**
      * Column names
+     *
+     * Read through a handle of its own: a column name is asked for while the
+     * rows are already going by, and seeking the handle they come from would
+     * hand the same row out twice
      *
      * @return array
      */
@@ -60,7 +64,6 @@ final class Table
     {
         if ($this->headers === null) {
             $file = $this->file();
-            $file->seek(0);
 
             $this->headers    = $file->current() ?: [];
             $this->headerKeys = array_flip($this->headers);
@@ -92,15 +95,15 @@ final class Table
     /**
      * The rows of the table, header aside
      *
-     * A fresh walk every time, so asking the same query twice answers the
-     * same way and nothing is left half read behind
+     * A walk of its own every time, down to the handle it reads through: the
+     * same query answers again and again, and a walk started while another is
+     * going on would otherwise wind the file back under it
      *
      * @return Iterator
      */
     public function records(): Iterator
     {
         $file = $this->file();
-        $file->rewind();
 
         /* The first line names the columns, and a trailing newline is no row */
         return new CallbackFilterIterator(
@@ -123,7 +126,7 @@ final class Table
     public function rewrite(Closure $closure): void
     {
         $this->replace(function (SplFileObject $target) use ($closure) {
-            $source = $this->model->file();
+            $source = $this->file();
 
             foreach ($source as $current) {
                 /* Fix drop new line */
@@ -224,16 +227,15 @@ final class Table
     }
 
     /**
-     * Let go of the file that was being read
+     * Forget what was read about the table
      *
-     * A write replaces the table by a rename, so the open handle points at a
-     * file that is no longer the table. The next read opens it again
+     * A migration may leave it with other columns than the ones read before,
+     * so the names are looked up again when they are next asked for
      *
      * @return void
      */
     public function close(): void
     {
-        $this->file       = null;
         $this->headers    = null;
         $this->headerKeys = [];
     }

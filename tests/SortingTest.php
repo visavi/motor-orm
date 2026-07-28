@@ -19,7 +19,7 @@ final class SortingTest extends TestCase
      */
     public static function setUpBeforeClass(): void
     {
-        $file = new SplFileObject((new Bulk())->getPath(), 'wb');
+        $file = new SplFileObject(new Bulk()->getPath(), 'wb');
         $file->setCsvControl(...Model::CSV_CONTROL);
         $file->fputcsv(['id', 'title', 'text']);
 
@@ -30,7 +30,7 @@ final class SortingTest extends TestCase
 
     public static function tearDownAfterClass(): void
     {
-        @unlink((new Bulk())->getPath());
+        @unlink(new Bulk()->getPath());
     }
 
     /**

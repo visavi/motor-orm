@@ -91,7 +91,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function testQueryingAMissingTable(): void
     {
-        @unlink((new Scratch())->getPath());
+        @unlink(new Scratch()->getPath());
 
         $query = Scratch::query()->where('id', 1);
 
@@ -106,7 +106,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function testQueryingAMissingTableDoesNotCreateIt(): void
     {
-        $path = (new Scratch())->getPath();
+        $path = new Scratch()->getPath();
         @unlink($path);
 
         try {
@@ -126,7 +126,7 @@ final class QueryBuilderTest extends TestCase
         Item::query()->create(['name' => 'one', 'value' => 'a']);
         Item::query()->create(['name' => 'two', 'value' => 'b']);
 
-        $path   = (new Item())->getPath();
+        $path   = new Item()->getPath();
         $before = file_get_contents($path);
 
         $written = 0;

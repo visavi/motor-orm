@@ -13,9 +13,6 @@ use InvalidArgumentException;
 use Iterator;
 use LimitIterator;
 use RuntimeException;
-use SplFileObject;
-use SplHeap;
-use UnexpectedValueException;
 
 /**
  * Query over a table
@@ -34,16 +31,9 @@ final class Query
         $this->table      = new Table($model);
         $this->mapper     = new RecordMapper($model, $this->table);
         $this->conditions = new Conditions();
+        $this->sorter     = new Sorter($this->table);
+        $this->writer     = new TableWriter($this->table, $this->mapper, $this->conditions);
     }
-
-    /**
-     * Rows a page may ask for before holding the whole order is cheaper
-     *
-     * Keeping a heap costs an insert per row, sorting once costs a sort. The
-     * fewer rows are wanted, the more the heap wins, and past a page or two
-     * the one sort at the end takes it back
-     */
-    private const int SORT_TAKE_LIMIT = 1000;
 
     /** The file the model stands for */
     private readonly Table $table;
@@ -54,10 +44,15 @@ final class Query
     /** What the rows have to satisfy */
     private readonly Conditions $conditions;
 
+    /** The order the rows come in */
+    private readonly Sorter $sorter;
+
+    /** Everything the query does to the table */
+    private readonly TableWriter $writer;
+
     private int $offset = 0;
     private int $limit = -1;
 
-    private array $orders = [];
     private array $with = [];
 
     /**
@@ -90,7 +85,7 @@ final class Query
      */
     private function pipeline(?int $take = null): Iterator
     {
-        return $this->sorting($this->filtering($this->table->records()), $take);
+        return $this->sorter->sort($this->filtering($this->table->records()), $take);
     }
 
     /**
@@ -322,7 +317,7 @@ final class Query
      */
     public function orderBy(string $field, SortOrder $sort = SortOrder::Asc): self
     {
-        $this->orders[$field] = $sort;
+        $this->sorter->by($field, $sort);
 
         return $this;
     }
@@ -336,7 +331,7 @@ final class Query
      */
     public function orderByDesc(string $field): self
     {
-        $this->orders[$field] = SortOrder::Desc;
+        $this->sorter->by($field, SortOrder::Desc);
 
         return $this;
     }
@@ -544,39 +539,7 @@ final class Query
      */
     public function create(array $values): Record
     {
-        $primary  = $this->getPrimaryKey();
-        $fields   = array_fill_keys($this->headers(), '');
-        $diffKeys = array_diff_key($values, $fields);
-
-        if ($diffKeys) {
-            throw new UnexpectedValueException(sprintf('%s() called undefined column. Column "%s" does not exist', __METHOD__, key($diffKeys)));
-        }
-
-        $lock = $this->table->lock();
-
-        try {
-            /* Another writer may have replaced the file, read it as it is now */
-            $this->table->close();
-
-            $ids = $this->primaryKeys($this->table->records());
-
-            if (! isset($values[$primary])) {
-                $values[$primary] = $this->nextPrimaryKey($ids);
-            }
-
-            if (isset($ids[$values[$primary]])) {
-                throw new UnexpectedValueException(sprintf('%s() duplicate entry. Column "%s" with the value "%s" already exists', __METHOD__, $primary, $values[$primary]));
-            }
-
-            $current = array_replace($fields, $values);
-            $current = $this->mapper->write($current);
-            $this->table->file()->fputcsv($current);
-        } finally {
-            flock($lock, LOCK_UN);
-            fclose($lock);
-        }
-
-        return new Record($this, $values);
+        return new Record($this, $this->writer->insert($values));
     }
 
     /**
@@ -588,20 +551,7 @@ final class Query
      */
     public function save(array $attr): bool
     {
-        $result = false;
-        $key    = (string) ($attr[$this->getPrimaryKey()] ?? '');
-
-        $this->table->rewrite(function (array &$current, SplFileObject $target) use (&$result, $attr, $key) {
-            if ((string) $current[0] === $key) {
-                $current = $this->mapper->write($attr);
-
-                $result = true;
-            }
-
-            $target->fputcsv($current);
-        });
-
-        return $result;
+        return $this->writer->save($attr);
     }
 
     /**
@@ -613,28 +563,7 @@ final class Query
      */
     public function update(array $values): int
     {
-        $diffKeys = array_diff_key($values, array_flip($this->headers()));
-
-        if ($diffKeys) {
-            throw new UnexpectedValueException(sprintf('%s() called undefined column. Column "%s" does not exist', __METHOD__, key($diffKeys)));
-        }
-
-        $affectedRows = 0;
-        $ids          = $this->primaryKeys($this->filtering($this->table->records()));
-
-        $reader = $this->mapper->reader();
-
-        $this->table->rewrite(function (array &$current, SplFileObject $target) use ($reader, $ids, $values, &$affectedRows) {
-            if (isset($ids[$current[0]])) {
-                $affectedRows++;
-                $current = array_replace($reader($current), $values);
-                $current = $this->mapper->write($current);
-            }
-
-            $target->fputcsv($current);
-        });
-
-        return $affectedRows;
+        return $this->writer->update($values);
     }
 
     /**
@@ -644,18 +573,7 @@ final class Query
      */
     public function delete(): int
     {
-        $affectedRows = 0;
-        $ids          = $this->primaryKeys($this->filtering($this->table->records()));
-
-        $this->table->rewrite(function (array $current, SplFileObject $target) use ($ids, &$affectedRows) {
-            if (isset($ids[$current[0]])) {
-                $affectedRows++;
-            } else {
-                $target->fputcsv($current);
-            }
-        });
-
-        return $affectedRows;
+        return $this->writer->delete();
     }
 
     /**
@@ -665,12 +583,7 @@ final class Query
      */
     public function truncate(): bool
     {
-        /* Only the column names survive, the rest of the table is never read */
-        $headers = $this->table->headers();
-
-        $this->table->replace(static function (SplFileObject $target) use ($headers) {
-            $target->fputcsv($headers);
-        });
+        $this->writer->truncate();
 
         return true;
     }
@@ -794,151 +707,6 @@ final class Query
             $iterator,
             fn ($current) => $this->conditions->match($current, $this->table)
         );
-    }
-
-    /**
-     * Put the rows in the order that was asked for
-     *
-     * @param Iterator $iterator
-     * @param int|null $take how many rows from the head are going to be read
-     *
-     * @return Iterator
-     */
-    private function sorting(Iterator $iterator, ?int $take): Iterator
-    {
-        if (! $this->orders) {
-            return $iterator;
-        }
-
-        /* Resolve the column positions once instead of on every comparison */
-        $orders = [];
-        foreach ($this->orders as $field => $sort) {
-            $orders[$this->table->keyOf($field)] = $sort === SortOrder::Asc;
-        }
-
-        $comparer = static function (array $a, array $b) use ($orders): int {
-            foreach ($orders as $key => $asc) {
-                $retVal = $asc ? $a[$key] <=> $b[$key] : $b[$key] <=> $a[$key];
-
-                if ($retVal !== 0) {
-                    return $retVal;
-                }
-            }
-
-            return 0;
-        };
-
-        if ($take !== null && $take <= self::SORT_TAKE_LIMIT) {
-            return $this->leading($iterator, $comparer, $take);
-        }
-
-        /* Nothing says how much of the order is wanted, so all of it is held at once */
-        $sorted = new ArrayIterator(iterator_to_array($iterator));
-
-        $sorted->uasort($comparer);
-
-        return $sorted;
-    }
-
-    /**
-     * The first rows of the order, without holding the rest
-     *
-     * Sorting still has to look at every row, but carrying every row is only
-     * needed when every row is wanted. For a page it is enough to keep the
-     * rows that would be on it: a heap holds the worst of them on top, so a
-     * row that cannot beat it is dropped where it is read
-     *
-     * @param Iterator $iterator
-     * @param Closure  $comparer
-     * @param int      $take
-     *
-     * @return Iterator
-     */
-    private function leading(Iterator $iterator, Closure $comparer, int $take): Iterator
-    {
-        if ($take === 0) {
-            return new ArrayIterator();
-        }
-
-        /* Rows the order cannot tell apart keep the order they were read in */
-        $sequence = 0;
-        $heap     = new class ($comparer) extends SplHeap {
-            public function __construct(private readonly Closure $comparer) {}
-
-            public function compare($value1, $value2): int
-            {
-                return ($this->comparer)($value1[1], $value2[1]) ?: $value1[0] <=> $value2[0];
-            }
-        };
-
-        foreach ($iterator as $row) {
-            $current = [$sequence++, $row];
-
-            if ($heap->count() < $take) {
-                $heap->insert($current);
-
-                continue;
-            }
-
-            /* The top is the worst of the rows kept, so it is the one to give way */
-            if ($heap->compare($current, $heap->top()) < 0) {
-                $heap->extract();
-                $heap->insert($current);
-            }
-        }
-
-        /* A heap gives up its rows worst first, and the head of the order is wanted */
-        $leading = [];
-        foreach ($heap as [, $row]) {
-            array_unshift($leading, $row);
-        }
-
-        return new ArrayIterator($leading);
-    }
-
-    /**
-     * Continue a numeric primary key from the highest one already taken
-     *
-     * @param array<array-key, string> $ids
-     *
-     * @return int|float the next free key
-     */
-    private function nextPrimaryKey(array $ids): int|float
-    {
-        if (! $ids) {
-            return 1;
-        }
-
-        $maxId = max($ids);
-
-        /* Keys are read as raw strings, only a numeric one can be continued */
-        if (! is_numeric($maxId)) {
-            throw new UnexpectedValueException(sprintf('%s() no unique ID assigned. Column "%s" cannot be generated', __METHOD__, $this->getPrimaryKey()));
-        }
-
-        return ++$maxId;
-    }
-
-    /**
-     * Collect the primary keys of the current selection, reading the raw
-     * records instead of building a model for every row
-     *
-     * @return array<array-key, string> the raw key of every record, as its own array key
-     */
-    private function primaryKeys(Iterator $iterator): array
-    {
-        $key = $this->table->keyOf($this->getPrimaryKey());
-
-        $ids = [];
-        foreach ($iterator as $record) {
-            $id = (string) ($record[$key] ?? '');
-
-            if ($id !== '') {
-                $ids[$id] = $id;
-            }
-        }
-
-        return $ids;
     }
 
     /**

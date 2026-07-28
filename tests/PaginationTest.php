@@ -139,9 +139,9 @@ final class PaginationTest extends TestCase
      */
     public function testLastPage(): void
     {
-        $this->assertEquals(10, (new Pagination([], 100, 10))->lastPage());
-        $this->assertEquals(3, (new Pagination([], 25, 10))->lastPage());
-        $this->assertEquals(1, (new Pagination([], 0, 10))->lastPage());
+        $this->assertEquals(10, new Pagination([], 100, 10)->lastPage());
+        $this->assertEquals(3, new Pagination([], 25, 10)->lastPage());
+        $this->assertEquals(1, new Pagination([], 0, 10)->lastPage());
     }
 
     /**
@@ -211,7 +211,7 @@ final class PaginationTest extends TestCase
      */
     public function testUrl(): void
     {
-        $paginator = (new Pagination([], 100, 10))
+        $paginator = new Pagination([], 100, 10)
             ->withPath('/stories')
             ->appends(['sort' => 'title']);
 
@@ -223,7 +223,7 @@ final class PaginationTest extends TestCase
      */
     public function testUrlOutOfRange(): void
     {
-        $paginator = (new Pagination([], 100, 10))->withPath('/stories');
+        $paginator = new Pagination([], 100, 10)->withPath('/stories');
 
         $this->assertEquals('/stories?page=10', $paginator->url(999));
         $this->assertEquals('/stories', $paginator->url(-5));
@@ -234,7 +234,7 @@ final class PaginationTest extends TestCase
      */
     public function testUrlOfTheFirstPage(): void
     {
-        $paginator = (new Pagination([], 100, 10))->withPath('/stories');
+        $paginator = new Pagination([], 100, 10)->withPath('/stories');
 
         $this->assertEquals('/stories', $paginator->url(1));
     }
@@ -244,7 +244,7 @@ final class PaginationTest extends TestCase
      */
     public function testUrlOfTheFirstPageKeepsAppends(): void
     {
-        $paginator = (new Pagination([], 100, 10))
+        $paginator = new Pagination([], 100, 10)
             ->withPath('/stories')
             ->appends(['sort' => 'title']);
 
@@ -268,7 +268,7 @@ final class PaginationTest extends TestCase
      */
     public function testLinksOfTheFirstPage(): void
     {
-        $links = (new Pagination([], 100, 10, 5))->withPath('/stories')->links();
+        $links = new Pagination([], 100, 10, 5)->withPath('/stories')->links();
 
         $this->assertStringContainsString('href="/stories"', $links);
         $this->assertStringNotContainsString('href="/stories?page=1"', $links);
@@ -305,7 +305,7 @@ final class PaginationTest extends TestCase
      */
     public function testCrumbs(): void
     {
-        $paginator = (new Pagination([], 100, 10, 5))->onEachSide(3);
+        $paginator = new Pagination([], 100, 10, 5)->onEachSide(3);
 
         $numbers = array_map(
             static fn (Page $page) => $page->name,
@@ -320,7 +320,7 @@ final class PaginationTest extends TestCase
      */
     public function testBuildUrl(): void
     {
-        $paginator = (new Pagination([], 100, 10))
+        $paginator = new Pagination([], 100, 10)
             ->withPath('/stories')
             ->appends(['sort' => 'title']);
 
@@ -334,7 +334,7 @@ final class PaginationTest extends TestCase
      */
     public function testCustomPageName(): void
     {
-        $paginator = (new Pagination([], 100, 10))
+        $paginator = new Pagination([], 100, 10)
             ->setPageName('custom')
             ->withPath('/stories');
 
@@ -348,7 +348,7 @@ final class PaginationTest extends TestCase
      */
     public function testLinks(): void
     {
-        $links = (new Pagination([], 30, 10))->links();
+        $links = new Pagination([], 30, 10)->links();
 
         $this->assertStringContainsString('pagination', $links);
         $this->assertStringContainsString('page=2', $links);
@@ -359,7 +359,7 @@ final class PaginationTest extends TestCase
      */
     public function testEmptyLinks(): void
     {
-        $this->assertStringNotContainsString('page-item', (new Pagination([], 0, 10))->links());
+        $this->assertStringNotContainsString('page-item', new Pagination([], 0, 10)->links());
     }
 
     /**
@@ -367,7 +367,7 @@ final class PaginationTest extends TestCase
      */
     public function testLinksEscapeThePath(): void
     {
-        $links = (new Pagination([], 30, 10))
+        $links = new Pagination([], 30, 10)
             ->withPath('/list"><script>alert(1)</script>')
             ->links();
 

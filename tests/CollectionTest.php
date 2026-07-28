@@ -92,7 +92,7 @@ final class CollectionTest extends TestCase
         $this->assertEquals(1, $collection->first());
         $this->assertEquals(2, $collection->first(static fn ($value) => $value > 1));
         $this->assertNull($collection->first(static fn ($value) => $value > 9));
-        $this->assertNull((new Collection())->first());
+        $this->assertNull(new Collection()->first());
     }
 
     /**
@@ -105,7 +105,7 @@ final class CollectionTest extends TestCase
 
         $this->assertEquals(3, $collection->last());
         $this->assertNull($collection->last(static fn ($value) => $value > 9));
-        $this->assertNull((new Collection())->last());
+        $this->assertNull(new Collection()->last());
     }
 
     /**
