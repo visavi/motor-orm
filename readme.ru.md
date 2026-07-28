@@ -62,8 +62,7 @@ echo $article->title;
 
 - [Чтение](#чтение)
 - [Условия](#условия)
-- [Частичный поиск (Like)](#частичный-поиск-like)
-- [Нестрогий поиск (Lax)](#нестрогий-поиск-lax)
+- [Поиск по шаблону (Like)](#поиск-по-шаблону-like)
 - [Сортировка, лимит и смещение](#сортировка-лимит-и-смещение)
 - [Обход большой таблицы](#обход-большой-таблицы)
 - [Запись](#запись)
@@ -129,7 +128,7 @@ $article->toArray();
 # Равенство
 Article::query()->where('name', 'Миша')->get();
 
-# Явный оператор: = != <> > >= < <= like not_like lax
+# Явный оператор: = != <> > >= < <=
 Article::query()->where('created_at', '>=', '2009-01-06 08:40:35')->get();
 
 # Или
@@ -153,33 +152,44 @@ Article::query()
 
 Фильтрация по колонке, которой нет в файле, бросает `UnexpectedValueException`.
 
-## Частичный поиск (Like)
+## Поиск по шаблону (Like)
+
+Знак `%` говорит, что значение может продолжаться в эту сторону:
 
 ```php
 # Строки, начинающиеся на hi
-Article::query()->where('tag', 'like', 'hi%')->get();
+Article::query()->whereLike('tag', 'hi%')->get();
 
 # Строки, заканчивающиеся на hi
-Article::query()->where('tag', 'like', '%hi')->get();
+Article::query()->whereLike('tag', '%hi')->get();
 
 # Строки, содержащие hi
-Article::query()->where('tag', 'like', '%hi%')->get();
+Article::query()->whereLike('tag', '%hi%')->get();
 
-# Эквивалентно запросу выше
-Article::query()->where('tag', 'like', 'hi')->get();
+# Ровно hi и ничего больше
+Article::query()->whereLike('tag', 'hi')->get();
 
 # Всё, что не содержит hi
-Article::query()->where('tag', 'not_like', '%hi%')->get();
+Article::query()->whereNotLike('tag', '%hi%')->get();
+
+# Как альтернатива предыдущему условию
+Article::query()->where('id', 1)->orWhereLike('tag', '%hi%')->get();
+Article::query()->where('id', 1)->orWhereNotLike('tag', '%hi%')->get();
 ```
 
-## Нестрогий поиск (Lax)
+Шаблон без подстановок сравнивается со всем значением целиком — так же ведёт себя `LIKE` в sql.
 
-По умолчанию сравнение строгое. `lax` сравнивает без учёта регистра:
+Регистр по умолчанию не учитывается, `caseSensitive` это меняет:
 
 ```php
 # Найдёт NAME, name, namE, Name и так далее
-User::query()->where('login', 'lax', 'name')->first();
+User::query()->whereLike('login', 'name')->first();
+
+# Только name
+User::query()->whereLike('login', 'name', caseSensitive: true)->first();
 ```
+
+Оператор, которого нет в списке сравнений, бросает `InvalidArgumentException` — опечатка вроде `lke` падает сразу, а не возвращает пустой результат.
 
 ## Сортировка, лимит и смещение
 

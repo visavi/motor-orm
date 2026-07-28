@@ -14,7 +14,6 @@ use Iterator;
 use LimitIterator;
 use RuntimeException;
 use SplFileObject;
-use Throwable;
 use UnexpectedValueException;
 
 /**
@@ -29,45 +28,22 @@ final class Query
     /**
      * @param Model $model the table being queried
      */
-    public function __construct(private readonly Model $model) {}
+    public function __construct(private readonly Model $model)
+    {
+        $this->table = new Table($model);
+    }
 
-    protected int $offset = 0;
-    protected int $limit = -1;
-    protected array $headers;
-    /** Column name => position, resolved once per query */
-    protected array $headerKeys = [];
-    protected ?string $primary;
-    protected Iterator $iterator;
-    protected SplFileObject $file;
+    /** The file the model stands for */
+    private readonly Table $table;
 
-    protected array $orders = [];
+    private int $offset = 0;
+    private int $limit = -1;
+
+    private array $orders = [];
     /** Records of the last result, so a relation loads for all of them at once */
     private array $rows = [];
-    protected array $with = [];
-    protected array $where = [];
-
-    /**
-     * Open file
-     *
-     * @return $this
-     */
-    public function open(): self
-    {
-        $this->file       = $this->model->file();
-        $this->headers    = $this->headers();
-        $this->headerKeys = array_flip($this->headers);
-        $this->primary    = $this->getPrimaryKey();
-
-        $this->iterator = new LimitIterator($this->file, 1);
-
-        /* Fix drop new line */
-        $this->iterator = new CallbackFilterIterator(
-            $this->iterator,
-            fn ($current) => $current !== [null]
-        );
-
-        return $this;
-    }
+    private array $with = [];
+    private array $where = [];
 
     /**
      * Get headers
@@ -76,9 +52,7 @@ final class Query
      */
     public function headers(): array
     {
-        $this->file->seek(0);
-
-        return $this->file->current() ?: [];
+        return $this->table->headers();
     }
 
     /**
@@ -88,7 +62,17 @@ final class Query
      */
     public function getPrimaryKey(): ?string
     {
-        return $this->headers[0] ?? null;
+        return $this->headers()[0] ?? null;
+    }
+
+    /**
+     * The rows this query asks for, filtered and in order
+     *
+     * @return Iterator
+     */
+    private function pipeline(): Iterator
+    {
+        return $this->sorting($this->filtering($this->table->records()));
     }
 
     /**
@@ -133,12 +117,33 @@ final class Query
 
             $this->where[$operator][] = [
                 'field'     => $field,
-                'condition' => $condition,
+                'condition' => $this->comparison($condition),
                 'value'     => (string) $value,
             ];
         }
 
         return $this;
+    }
+
+    /**
+     * The comparison a condition asks for
+     *
+     * A misspelled operator used to fall through to equality and quietly
+     * return nothing, so only these are accepted. Patterns and sets have
+     * methods of their own
+     *
+     * @param mixed $condition
+     *
+     * @return string
+     */
+    private function comparison(mixed $condition): string
+    {
+        return match ($condition) {
+            '=', '!=', '<>', '>', '>=', '<', '<=' => $condition,
+            default => throw new InvalidArgumentException(
+                sprintf('%s() unknown operator "%s"', __METHOD__, is_scalar($condition) ? $condition : get_debug_type($condition))
+            ),
+        };
     }
 
     /**
@@ -165,6 +170,89 @@ final class Query
 
             $this->where($field, $condition, $value, 'or');
         }
+
+        return $this;
+    }
+
+    /**
+     * Where the value matches a pattern
+     *
+     * A leading or trailing % says the value may go on there, a pattern
+     * without either has to match the whole value. The case is ignored
+     * unless caseSensitive says otherwise
+     *
+     * @param string $field
+     * @param string $value
+     * @param bool   $caseSensitive
+     *
+     * @return $this
+     */
+    public function whereLike(string $field, string $value, bool $caseSensitive = false): self
+    {
+        return $this->like($field, $value, $caseSensitive, false, 'and');
+    }
+
+    /**
+     * Where the value does not match a pattern
+     *
+     * @param string $field
+     * @param string $value
+     * @param bool   $caseSensitive
+     *
+     * @return $this
+     */
+    public function whereNotLike(string $field, string $value, bool $caseSensitive = false): self
+    {
+        return $this->like($field, $value, $caseSensitive, true, 'and');
+    }
+
+    /**
+     * Or where the value matches a pattern
+     *
+     * @param string $field
+     * @param string $value
+     * @param bool   $caseSensitive
+     *
+     * @return $this
+     */
+    public function orWhereLike(string $field, string $value, bool $caseSensitive = false): self
+    {
+        return $this->like($field, $value, $caseSensitive, false, 'or');
+    }
+
+    /**
+     * Or where the value does not match a pattern
+     *
+     * @param string $field
+     * @param string $value
+     * @param bool   $caseSensitive
+     *
+     * @return $this
+     */
+    public function orWhereNotLike(string $field, string $value, bool $caseSensitive = false): self
+    {
+        return $this->like($field, $value, $caseSensitive, true, 'or');
+    }
+
+    /**
+     * Collect a pattern condition
+     *
+     * @param string $field
+     * @param string $value
+     * @param bool   $caseSensitive
+     * @param bool   $not
+     * @param string $operator
+     *
+     * @return $this
+     */
+    private function like(string $field, string $value, bool $caseSensitive, bool $not, string $operator): self
+    {
+        $this->where[$operator][] = [
+            'field'         => $field,
+            'condition'     => $not ? 'not_like' : 'like',
+            'value'         => $value,
+            'caseSensitive' => $caseSensitive,
+        ];
 
         return $this;
     }
@@ -251,7 +339,7 @@ final class Query
      */
     public function find(int|string $id): ?Record
     {
-        return $this->where($this->primary, $id)->first();
+        return $this->where($this->getPrimaryKey(), $id)->first();
     }
 
     /**
@@ -261,18 +349,15 @@ final class Query
      */
     public function first(): ?Record
     {
-        $this->filtering();
-        $this->sorting();
-        $this->iterator = new LimitIterator($this->iterator, 0, 1);
-
-        $this->iterator->rewind();
+        $iterator = new LimitIterator($this->pipeline(), 0, 1);
+        $iterator->rewind();
 
         /* Reading the first match is enough, counting the whole table is not */
-        if (! $this->iterator->valid()) {
+        if (! $iterator->valid()) {
             return null;
         }
 
-        $record = new Record($this, $this->combiner()($this->iterator->current()));
+        $record = new Record($this, $this->combiner()($iterator->current()));
 
         /* A record read on its own has no siblings, its relations load for itself */
         $this->rows = [$record];
@@ -291,11 +376,11 @@ final class Query
      */
     public function exists(): bool
     {
-        $this->filtering();
-        $this->iterator->rewind();
+        $iterator = $this->filtering($this->table->records());
+        $iterator->rewind();
 
         /* One match settles it, counting the rest is wasted work */
-        return $this->iterator->valid();
+        return $iterator->valid();
     }
 
     /**
@@ -305,11 +390,9 @@ final class Query
      */
     public function get(): Collection
     {
-        $this->filtering();
-        $this->sorting();
-        $this->iterator = new LimitIterator($this->iterator, $this->offset, $this->limit);
+        $iterator = new LimitIterator($this->pipeline(), $this->offset, $this->limit);
 
-        return new Collection($this->mapper($this->iterator));
+        return new Collection($this->mapper($iterator));
     }
 
     /**
@@ -324,13 +407,11 @@ final class Query
      */
     public function cursor(): Generator
     {
-        $this->filtering();
-        $this->sorting();
-        $this->iterator = new LimitIterator($this->iterator, $this->offset, $this->limit);
+        $iterator = new LimitIterator($this->pipeline(), $this->offset, $this->limit);
 
         $combiner = $this->combiner();
 
-        foreach ($this->iterator as $line) {
+        foreach ($iterator as $line) {
             yield new Record($this, $combiner($line));
         }
     }
@@ -354,11 +435,9 @@ final class Query
         $page   = min(max(1, $page), Pagination::lastPageOf($total, $limit));
         $offset = $page * $limit - $limit;
 
-        $this->filtering();
-        $this->sorting();
-        $this->iterator = new LimitIterator($this->iterator, $offset, $limit);
+        $iterator = new LimitIterator($this->pipeline(), $offset, $limit);
 
-        return new Pagination($this->mapper($this->iterator), $total, $limit, $page);
+        return new Pagination($this->mapper($iterator), $total, $limit, $page);
     }
 
     /**
@@ -378,11 +457,9 @@ final class Query
         $page   = max(1, $page);
         $offset = $page * $limit - $limit;
 
-        $this->filtering();
-        $this->sorting();
-        $this->iterator = new LimitIterator($this->iterator, $offset, $limit + 1);
+        $iterator = new LimitIterator($this->pipeline(), $offset, $limit + 1);
 
-        $records = $this->mapper($this->iterator);
+        $records = $this->mapper($iterator);
         $hasMore = count($records) > $limit;
 
         if ($hasMore) {
@@ -401,9 +478,7 @@ final class Query
      */
     public function count(): int
     {
-        $this->filtering();
-
-        return iterator_count($this->iterator);
+        return iterator_count($this->filtering($this->table->records()));
     }
 
     /**
@@ -459,32 +534,33 @@ final class Query
      */
     public function create(array $values): Record
     {
-        $fields   = array_fill_keys($this->headers, '');
+        $primary  = $this->getPrimaryKey();
+        $fields   = array_fill_keys($this->headers(), '');
         $diffKeys = array_diff_key($values, $fields);
 
         if ($diffKeys) {
             throw new UnexpectedValueException(sprintf('%s() called undefined column. Column "%s" does not exist', __METHOD__, key($diffKeys)));
         }
 
-        $lock = $this->lockForWrite();
+        $lock = $this->table->lock();
 
         try {
             /* Another writer may have replaced the file, read it as it is now */
-            $this->reopen();
+            $this->table->close();
 
-            $ids = $this->primaryKeys();
+            $ids = $this->primaryKeys($this->table->records());
 
-            if (! isset($values[$this->primary])) {
-                $values[$this->primary] = $this->nextPrimaryKey($ids);
+            if (! isset($values[$primary])) {
+                $values[$primary] = $this->nextPrimaryKey($ids);
             }
 
-            if (isset($ids[$values[$this->primary]])) {
-                throw new UnexpectedValueException(sprintf('%s() duplicate entry. Column "%s" with the value "%s" already exists', __METHOD__, $this->primary, $values[$this->primary]));
+            if (isset($ids[$values[$primary]])) {
+                throw new UnexpectedValueException(sprintf('%s() duplicate entry. Column "%s" with the value "%s" already exists', __METHOD__, $primary, $values[$primary]));
             }
 
             $current = array_replace($fields, $values);
             $current = $this->prepare($current);
-            $this->file->fputcsv($current);
+            $this->table->file()->fputcsv($current);
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
@@ -503,9 +579,9 @@ final class Query
     public function save(array $attr): bool
     {
         $result = false;
-        $key    = (string) ($attr[$this->primary] ?? '');
+        $key    = (string) ($attr[$this->getPrimaryKey()] ?? '');
 
-        $this->rewrite(function (array &$current, SplFileObject $target) use (&$result, $attr, $key) {
+        $this->table->rewrite(function (array &$current, SplFileObject $target) use (&$result, $attr, $key) {
             if ((string) $current[0] === $key) {
                 $current = $this->prepare($attr);
 
@@ -527,19 +603,18 @@ final class Query
      */
     public function update(array $values): int
     {
-        $diffKeys = array_diff_key($values, array_flip($this->headers));
+        $diffKeys = array_diff_key($values, array_flip($this->headers()));
 
         if ($diffKeys) {
             throw new UnexpectedValueException(sprintf('%s() called undefined column. Column "%s" does not exist', __METHOD__, key($diffKeys)));
         }
 
         $affectedRows = 0;
-        $this->filtering();
-        $ids = $this->primaryKeys();
+        $ids          = $this->primaryKeys($this->filtering($this->table->records()));
 
         $combiner = $this->combiner();
 
-        $this->rewrite(function (array &$current, SplFileObject $target) use ($combiner, $ids, $values, &$affectedRows) {
+        $this->table->rewrite(function (array &$current, SplFileObject $target) use ($combiner, $ids, $values, &$affectedRows) {
             if (isset($ids[$current[0]])) {
                 $affectedRows++;
                 $current = array_replace($combiner($current), $values);
@@ -560,10 +635,9 @@ final class Query
     public function delete(): int
     {
         $affectedRows = 0;
-        $this->filtering();
-        $ids = $this->primaryKeys();
+        $ids          = $this->primaryKeys($this->filtering($this->table->records()));
 
-        $this->rewrite(function (array $current, SplFileObject $target) use ($ids, &$affectedRows) {
+        $this->table->rewrite(function (array $current, SplFileObject $target) use ($ids, &$affectedRows) {
             if (isset($ids[$current[0]])) {
                 $affectedRows++;
             } else {
@@ -582,8 +656,10 @@ final class Query
     public function truncate(): bool
     {
         /* Only the column names survive, the rest of the table is never read */
-        $this->replace(function (SplFileObject $target) {
-            $target->fputcsv($this->model->file()->current() ?: []);
+        $headers = $this->table->headers();
+
+        $this->table->replace(static function (SplFileObject $target) use ($headers) {
+            $target->fputcsv($headers);
         });
 
         return true;
@@ -638,14 +714,15 @@ final class Query
      *
      * @return Closure
      */
-    protected function combiner(): Closure
+    private function combiner(): Closure
     {
-        $headers    = $this->headers;
+        $headers    = $this->headers();
         $fieldCount = count($headers);
         $casts      = $this->model->getCasts();
+        $key        = $this->getPrimaryKey();
 
         /* The key is cast by the orm that generated it, unless the model says otherwise */
-        $primary = $this->primary !== null && ! isset($casts[$this->primary]) ? $this->primary : null;
+        $primary = $key !== null && ! isset($casts[$key]) ? $key : null;
 
         return function (array $record) use ($headers, $fieldCount, $casts, $primary): array {
             if (count($record) !== $fieldCount) {
@@ -678,7 +755,7 @@ final class Query
      *
      * @return Record[]
      */
-    protected function mapper(iterable $values): array
+    private function mapper(iterable $values): array
     {
         $combiner = $this->combiner();
 
@@ -713,169 +790,51 @@ final class Query
      */
     public function loadRelation(array $rows, string $with): void
     {
-        /** @var Relation $relation */
-        $relation = $this->model->relation($with);
-        $relation->resolve($this);
-
-        $localIds = $this->localIds($rows, $relation->localKey);
-
-        if ($relation->type === RelationType::HasManyThrough) {
-            $this->eagerLoadThrough($rows, $with, $relation, $localIds);
-
-            return;
-        }
-
-        $model      = $relation->model;
-        $foreignKey = $relation->foreignKey;
-
-        $related = [];
-        if ($localIds) {
-            $query = $model::query()->whereIn($foreignKey, $localIds);
-            $relation->applyTo($query);
-
-            $related = $query->get();
-        }
-
-        $byKey = [];
-        foreach ($related as $record) {
-            if ($relation->isSingle()) {
-                $byKey[$record->$foreignKey] ??= $record;
-            } else {
-                $byKey[$record->$foreignKey][] = $record;
-            }
-        }
-
-        $emptyQuery = null;
-
-        foreach ($rows as $row) {
-            $found = $byKey[$row->attr[$relation->localKey] ?? null] ?? null;
-
-            if (! $relation->isSingle()) {
-                $row->setRelation($with, new Collection($found ?? []));
-
-                continue;
-            }
-
-            /* A missing hasOne gives an empty record, never null */
-            if ($found === null) {
-                $emptyQuery ??= $model::query();
-                $found = new Record($emptyQuery);
-            }
-
-            $row->setRelation($with, $found);
-        }
+        new RelationLoader($this)->load($rows, $with);
     }
 
     /**
-     * Collect unique local keys of the given rows
+     * Keep only the rows the conditions let through
      *
-     * @param array  $rows
-     * @param string $localKey
+     * @param Iterator $iterator
      *
-     * @return array
+     * @return Iterator
      */
-    private function localIds(array $rows, string $localKey): array
-    {
-        $localIds = [];
-        foreach ($rows as $row) {
-            $localId = $row->attr[$localKey] ?? null;
-
-            if ($localId) {
-                $localIds[$localId] = $localId;
-            }
-        }
-
-        return $localIds;
-    }
-
-    /**
-     * Load a hasManyThrough relation
-     *
-     * @param array    $rows
-     * @param string   $with
-     * @param Relation $relation
-     * @param array    $localIds
-     *
-     * @return void
-     */
-    private function eagerLoadThrough(array $rows, string $with, Relation $relation, array $localIds): void
-    {
-        $foreignKey       = $relation->foreignKey;
-        $secondForeignKey = $relation->secondForeignKey;
-        $model            = $relation->model;
-        $through          = $relation->through;
-
-        $secondKeysByLocal = [];
-        $secondKeys        = [];
-
-        if ($localIds) {
-            foreach ($through::query()->whereIn($foreignKey, $localIds)->get() as $link) {
-                $secondKeysByLocal[$link->$foreignKey][] = $link->$secondForeignKey;
-                $secondKeys[$link->$secondForeignKey]    = $link->$secondForeignKey;
-            }
-        }
-
-        $records = [];
-        if ($secondKeys) {
-            $query = $model::query()->whereIn($relation->secondLocalKey, $secondKeys);
-            $relation->applyTo($query);
-
-            foreach ($query->get() as $record) {
-                $records[$record->{$relation->secondLocalKey}] = $record;
-            }
-        }
-
-        foreach ($rows as $row) {
-            $localId = $row->attr[$relation->localKey] ?? null;
-
-            $items = [];
-            foreach ($secondKeysByLocal[$localId] ?? [] as $secondKey) {
-                if (isset($records[$secondKey])) {
-                    $items[] = $records[$secondKey];
-                }
-            }
-
-            $row->setRelation($with, new Collection($items));
-        }
-    }
-
-    /**
-     * Apply condition
-     *
-     * @return void
-     */
-    private function filtering(): void
+    private function filtering(Iterator $iterator): Iterator
     {
         if (! $this->where) {
-            return;
+            return $iterator;
         }
 
-        $this->iterator = new CallbackFilterIterator(
-            $this->iterator,
+        return new CallbackFilterIterator(
+            $iterator,
             fn ($current) => $this->checker($this->where, $current)
         );
     }
 
     /**
-     * Sorting
+     * Put the rows in the order that was asked for
      *
-     * @return void
+     * @param Iterator $iterator
+     *
+     * @return Iterator
      */
-    private function sorting(): void
+    private function sorting(Iterator $iterator): Iterator
     {
         if (! $this->orders) {
-            return;
+            return $iterator;
         }
 
         /* Resolve the column positions once instead of on every comparison */
         $orders = [];
         foreach ($this->orders as $field => $sort) {
-            $orders[$this->getKeyByField($field)] = $sort === SortOrder::Asc;
+            $orders[$this->table->keyOf($field)] = $sort === SortOrder::Asc;
         }
 
-        $this->iterator = new ArrayIterator(iterator_to_array($this->iterator));
+        /* Sorting has to see every row, so here the whole result is held at once */
+        $sorted = new ArrayIterator(iterator_to_array($iterator));
 
-        $this->iterator->uasort(
+        $sorted->uasort(
             static function ($a, $b) use ($orders) {
                 foreach ($orders as $key => $asc) {
                     $retVal = $asc ? $a[$key] <=> $b[$key] : $b[$key] <=> $a[$key];
@@ -888,6 +847,8 @@ final class Query
                 return 0;
             }
         );
+
+        return $sorted;
     }
 
     /**
@@ -899,7 +860,7 @@ final class Query
      *
      * @return bool
      */
-    private function condition(mixed $field, string $condition, mixed $value = null): bool
+    private function condition(mixed $field, string $condition, mixed $value = null, bool $caseSensitive = false): bool
     {
         return match ($condition) {
             '!=', '<>' => $field !== $value,
@@ -909,9 +870,8 @@ final class Query
             '<' => $field < $value,
             'in' => isset($value[$field]),
             'not_in' => ! isset($value[$field]),
-            'like' => self::like($field, $value),
-            'not_like' => ! self::like($field, $value),
-            'lax' => self::lax($field, $value),
+            'like' => self::matches((string) $field, $value, $caseSensitive),
+            'not_like' => ! self::matches((string) $field, $value, $caseSensitive),
             default => $field === $value,
         };
     }
@@ -924,42 +884,38 @@ final class Query
      *
      * @return bool
      */
-    private static function like(mixed $field, mixed $value): bool
+    private static function matches(string $field, string $value, bool $caseSensitive): bool
     {
-        if (! $value) {
-            return false;
+        if (! $caseSensitive) {
+            /* Lowering both sides beats a case-insensitive search on each of them */
+            $field = mb_strtolower($field, 'UTF-8');
+            $value = mb_strtolower($value, 'UTF-8');
         }
 
-        $value = (string) $value;
-        if ($value[0] === '%' && $value[-1] === '%') {
-            return mb_stripos($field, trim($value, '%'), 0, 'UTF-8') !== false;
+        $left  = str_starts_with($value, '%');
+        $right = str_ends_with($value, '%');
+
+        if (! $left && ! $right) {
+            return $field === $value;
         }
 
-        if ($value[0] === '%') {
-            $value = trim($value, '%');
-            return mb_strripos($field, $value, 0, 'UTF-8') === mb_strlen($field, 'UTF-8') - mb_strlen($value, 'UTF-8');
-        }
+        $needle = trim($value, '%');
 
-        if ($value[-1] === '%') {
-            return mb_stripos($field, trim($value, '%'), 0, 'UTF-8') === 0;
-        }
-
-        return mb_stripos($field, $value, 0, 'UTF-8') !== false;
+        return match (true) {
+            $left && $right => str_contains($field, $needle),
+            $left           => str_ends_with($field, $needle),
+            default         => str_starts_with($field, $needle),
+        };
     }
 
     /**
-     * Case insensitive comparison
+     * Case-insensitive comparison
      *
      * @param mixed $field
      * @param mixed $value
      *
      * @return bool
      */
-    private static function lax(mixed $field, mixed $value): bool
-    {
-        return mb_strtolower((string) $field, 'UTF-8') === mb_strtolower((string) $value, 'UTF-8');
-    }
-
     /**
      *  Cast
      *
@@ -1018,8 +974,8 @@ final class Query
 
         foreach ($wheres as $key => $where) {
             if (isset($where['field'])) {
-                $field  = $args[$this->getKeyByField($where['field'])];
-                $result = $this->condition($field, $where['condition'], $where['value']);
+                $field  = $args[$this->table->keyOf($where['field'])];
+                $result = $this->condition($field, $where['condition'], $where['value'], $where['caseSensitive'] ?? false);
             } else {
                 /* A nested group is stored under a numeric key, its own keys carry the operators */
                 $result = $this->checker($where, $args, is_string($key) ? $key : 'or');
@@ -1051,7 +1007,7 @@ final class Query
 
         /* Keys are read as raw strings, only a numeric one can be continued */
         if (! is_numeric($maxId)) {
-            throw new UnexpectedValueException(sprintf('%s() no unique ID assigned. Column "%s" cannot be generated', __METHOD__, $this->primary));
+            throw new UnexpectedValueException(sprintf('%s() no unique ID assigned. Column "%s" cannot be generated', __METHOD__, $this->getPrimaryKey()));
         }
 
         return ++$maxId;
@@ -1063,12 +1019,12 @@ final class Query
      *
      * @return array<array-key, string> the raw key of every record, as its own array key
      */
-    private function primaryKeys(): array
+    private function primaryKeys(Iterator $iterator): array
     {
-        $key = $this->getKeyByField($this->primary);
+        $key = $this->table->keyOf($this->getPrimaryKey());
 
         $ids = [];
-        foreach ($this->iterator as $record) {
+        foreach ($iterator as $record) {
             $id = (string) ($record[$key] ?? '');
 
             if ($id !== '') {
@@ -1077,156 +1033,6 @@ final class Query
         }
 
         return $ids;
-    }
-
-    /**
-     * Get key by name
-     *
-     * @param string $field
-     *
-     * @return int
-     */
-    private function getKeyByField(string $field): int
-    {
-        $key = $this->headerKeys[$field] ?? false;
-
-        if ($key === false) {
-            throw new UnexpectedValueException(sprintf('%s() called undefined column. Column "%s" does not exist', __METHOD__, $field));
-        }
-
-        return $key;
-    }
-
-    /**
-     * Rewrite the table row by row
-     *
-     * The rows go to a sibling file that replaces the table in one atomic
-     * step, so a reader never sees a half written table and a failure
-     * leaves the original untouched
-     *
-     * @param Closure $closure called with the record, the file being written and the one being read
-     *
-     * @return void
-     */
-    public function rewrite(Closure $closure): void
-    {
-        $this->replace(function (SplFileObject $target) use ($closure) {
-            $source = $this->model->file();
-
-            foreach ($source as $current) {
-                /* Fix drop new line */
-                if ($current === [null]) {
-                    continue;
-                }
-
-                $closure($current, $target, $source);
-            }
-        });
-    }
-
-    /**
-     * Put a freshly written file in place of the table
-     *
-     * The rows go to a sibling file that replaces the table in one atomic
-     * step, so a reader never sees a half written table and a failure
-     * leaves the original untouched
-     *
-     * @param Closure $writer called with the file to write the new table into
-     *
-     * @return void
-     */
-    private function replace(Closure $writer): void
-    {
-        $path     = $this->model->getPath();
-        $tempPath = $path . '.tmp';
-        $lock     = $this->lockForWrite();
-
-        try {
-            $target = new SplFileObject($tempPath, 'w');
-            $target->setCsvControl(...Model::CSV_CONTROL);
-
-            try {
-                $writer($target);
-            } catch (Throwable $exception) {
-                unset($target);
-                unlink($tempPath);
-
-                throw $exception;
-            }
-
-            unset($target);
-
-            chmod($tempPath, fileperms($path) & 0777);
-
-            /* One atomic step: a reader sees either the old table or the new one */
-            if (! rename($tempPath, $path)) {
-                unlink($tempPath);
-
-                throw new UnexpectedValueException(sprintf('Unable to replace table file: %s', $path));
-            }
-        } finally {
-            flock($lock, LOCK_UN);
-            fclose($lock);
-        }
-
-        $this->reopen();
-    }
-
-    /**
-     * Take the write lock on the table
-     *
-     * A write replaces the file by a rename, so a lock held on a file that
-     * has just been swapped out protects nothing. Check that the handle
-     * still refers to the file the path points at, and take the lock again
-     * when another writer replaced it while we were waiting
-     *
-     * @return resource
-     */
-    private function lockForWrite()
-    {
-        while (true) {
-            $handle = @fopen($this->model->getPath(), 'r');
-
-            if ($handle === false) {
-                throw new UnexpectedValueException(
-                    sprintf('%s() table "%s" does not exist', __METHOD__, $this->model->getTable())
-                );
-            }
-
-            if (! flock($handle, LOCK_EX)) {
-                fclose($handle);
-
-                throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->model->getPath()));
-            }
-
-            $locked  = fstat($handle);
-            $current = @stat($this->model->getPath());
-
-            if ($current !== false && $current['ino'] === $locked['ino']) {
-                return $handle;
-            }
-
-            flock($handle, LOCK_UN);
-            fclose($handle);
-        }
-    }
-
-    /**
-     * Point the builder at the file as it is now, after it was replaced
-     *
-     * @return void
-     */
-    private function reopen(): void
-    {
-        $this->file = $this->model->file();
-
-        $this->iterator = new LimitIterator($this->file, 1);
-
-        /* Fix drop new line */
-        $this->iterator = new CallbackFilterIterator(
-            $this->iterator,
-            fn ($current) => $current !== [null]
-        );
     }
 
     /**

@@ -67,15 +67,35 @@ final class QueryTest extends TestCase
     }
 
     /**
-     * Like conditions
+     * Wildcards say where the pattern may be extended
      *
      */
     public function testWhereLike(): void
     {
-        $this->assertCount(11, Article::query()->where('title', 'like', 'Заголовок1%')->get());
-        $this->assertCount(1, Article::query()->where('title', 'like', '%овок15')->get());
-        $this->assertCount(1, Article::query()->where('title', 'like', '%овок15%')->get());
-        $this->assertCount(20, Article::query()->where('title', 'like', 'Заголовок')->get());
+        $this->assertCount(11, Article::query()->whereLike('title', 'Заголовок1%')->get());
+        $this->assertCount(1, Article::query()->whereLike('title', '%овок15')->get());
+        $this->assertCount(1, Article::query()->whereLike('title', '%овок15%')->get());
+    }
+
+    /**
+     * A pattern without wildcards matches the whole value, as sql like does
+     *
+     */
+    public function testWhereLikeWithoutWildcardsIsExact(): void
+    {
+        $this->assertCount(0, Article::query()->whereLike('title', 'Заголовок')->get());
+        $this->assertCount(1, Article::query()->whereLike('title', 'Заголовок15')->get());
+    }
+
+    /**
+     * Matching ignores the case unless it is asked not to
+     *
+     */
+    public function testWhereLikeCaseSensitive(): void
+    {
+        $this->assertCount(3, Article::query()->whereLike('name', 'миша')->get());
+        $this->assertCount(0, Article::query()->whereLike('name', 'миша', caseSensitive: true)->get());
+        $this->assertCount(3, Article::query()->whereLike('name', 'Миша', caseSensitive: true)->get());
     }
 
     /**
@@ -84,19 +104,48 @@ final class QueryTest extends TestCase
      */
     public function testWhereNotLike(): void
     {
-        $find = Article::query()->where('title', 'not_like', 'Заголовок1%')->get();
-
-        $this->assertCount(9, $find);
+        $this->assertCount(9, Article::query()->whereNotLike('title', 'Заголовок1%')->get());
     }
 
     /**
-     * Case insensitive comparison
+     * Like as an alternative to what came before it
      *
      */
-    public function testWhereLax(): void
+    public function testOrWhereLike(): void
     {
-        $this->assertCount(3, Article::query()->where('name', 'lax', 'миша')->get());
-        $this->assertCount(0, Article::query()->where('name', 'миша')->get());
+        $find = Article::query()
+            ->where('id', 1)
+            ->orWhereLike('title', '%овок15')
+            ->get();
+
+        $this->assertCount(2, $find);
+        $this->assertEquals(1, $find[0]->id);
+        $this->assertEquals(15, $find[1]->id);
+    }
+
+    /**
+     * Not like as an alternative to what came before it
+     *
+     */
+    public function testOrWhereNotLike(): void
+    {
+        $find = Article::query()
+            ->where('id', 1)
+            ->orWhereNotLike('title', 'Заголовок1%')
+            ->get();
+
+        $this->assertCount(10, $find);
+    }
+
+    /**
+     * An operator that is not a comparison is a mistake, not a match
+     *
+     */
+    public function testUnknownOperator(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        Article::query()->where('title', 'lke', 'Заголовок1');
     }
 
     /**
@@ -171,6 +220,21 @@ final class QueryTest extends TestCase
         $this->expectException(BadMethodCallException::class);
 
         Article::query()->undefinedMethod();
+    }
+
+    /**
+     * The same conditions answer the same way however often they are asked
+     *
+     */
+    public function testBuilderCanBeReused(): void
+    {
+        $query = Article::query()->where('name', 'Миша');
+
+        $this->assertCount(3, $query->get());
+        $this->assertCount(3, $query->get());
+        $this->assertSame(3, $query->count());
+        $this->assertEquals(10, $query->first()->id);
+        $this->assertCount(3, $query->get());
     }
 
     /**

@@ -48,7 +48,7 @@ abstract class Model
      */
     public static function query(): Query
     {
-        return new Query(new static())->open();
+        return new Query(new static());
     }
 
     /**
@@ -228,7 +228,8 @@ abstract class Model
      */
     private function openFile(): SplFileObject
     {
-        $file = new SplFileObject($this->getPath(), 'a+');
+        /* Binary mode, so a row is the same bytes on every system */
+        $file = new SplFileObject($this->getPath(), 'a+b');
         $file->setCsvControl(...self::CSV_CONTROL);
         $file->setFlags(
             SplFileObject::READ_AHEAD |

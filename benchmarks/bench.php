@@ -60,7 +60,7 @@ $readCases = [
     'simplePaginate(10)'          => static fn () => count(Bench::query()->simplePaginate(10)) . ' зап.',
     'simplePaginate поздняя стр.' => static fn () => count(Bench::query()->simplePaginate(10, 4900)) . ' зап.',
     'whereIn 100 значений'        => static fn () => count(Bench::query()->whereIn('id', range(1, 100))->get()) . ' зап.',
-    'like %подстрока%'            => static fn () => Bench::query()->where('title', 'like', '%овок499%')->count() . ' зап.',
+    'whereLike %подстрока%'       => static fn () => Bench::query()->whereLike('title', '%овок499%')->count() . ' зап.',
     'три условия AND'             => static fn () => Bench::query()
         ->where('name', 'Имя7')
         ->where('time', '>=', 1231231234)
@@ -241,7 +241,7 @@ function generateTable(int $rows): void
 
     printf('Генерирую таблицу на %s строк...%s', number_format($rows, 0, '.', ' '), PHP_EOL);
 
-    $file = new SplFileObject(TABLE, 'w');
+    $file = new SplFileObject(TABLE, 'wb');
     $file->setCsvControl(...Builder::CSV_CONTROL);
     $file->fputcsv(['id', 'name', 'title', 'text', 'time']);
 

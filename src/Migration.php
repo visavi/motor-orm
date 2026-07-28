@@ -14,10 +14,13 @@ use UnexpectedValueException;
 class Migration
 {
     protected array $columns = [];
-    protected ?SplFileObject $file = null;
+
+    /** The file being migrated */
+    private readonly Table $table;
 
     public function __construct(public Model $model)
     {
+        $this->table = new Table($model);
     }
 
     /**
@@ -28,7 +31,7 @@ class Migration
      */
     protected function file(): SplFileObject
     {
-        return $this->file ??= $this->model->file();
+        return $this->table->file();
     }
 
     /**
@@ -183,7 +186,9 @@ class Migration
 
         $columns = array_column($this->columns, 'name');
 
-        $file = $this->file = $this->model->createFile();
+        $this->table->close();
+
+        $file = $this->model->createFile();
         chmod($this->model->getPath(), 0666);
 
         $file->fputcsv($columns);
@@ -206,7 +211,7 @@ class Migration
         }
 
         unlink($this->model->getPath());
-        $this->file = null;
+        $this->table->close();
 
         return true;
     }
@@ -319,9 +324,7 @@ class Migration
             return [];
         }
 
-        $this->file();
-
-        return $this->model::query()->headers();
+        return $this->table->headers();
     }
 
     /**
@@ -333,14 +336,11 @@ class Migration
      */
     private function process(Closure $closure): void
     {
-        $this->model::query()->rewrite(static function (array &$current, SplFileObject $target, SplFileObject $source) use ($closure) {
+        $this->table->rewrite(static function (array &$current, SplFileObject $target, SplFileObject $source) use ($closure) {
             $closure($source, $current);
 
             $target->fputcsv($current);
         });
-
-        /* The table file was replaced, the handle we were holding is stale */
-        $this->file = null;
     }
 
     /**

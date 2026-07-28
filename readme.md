@@ -61,8 +61,7 @@ written table and an interrupted write leaves the original untouched.
 
 - [Reading](#reading)
 - [Conditions](#conditions)
-- [Partial match (Like)](#partial-match-like)
-- [Loose match (Lax)](#loose-match-lax)
+- [Pattern match (Like)](#pattern-match-like)
 - [Sorting, limit and offset](#sorting-limit-and-offset)
 - [Walking a large table](#walking-a-large-table)
 - [Writing](#writing)
@@ -128,7 +127,7 @@ nothing on a record near the top of the file.
 # Equality
 Article::query()->where('name', 'Misha')->get();
 
-# An explicit operator: = != <> > >= < <= like not_like lax
+# An explicit operator: = != <> > >= < <=
 Article::query()->where('created_at', '>=', '2009-01-06 08:40:35')->get();
 
 # Or
@@ -152,33 +151,44 @@ Article::query()
 
 Filtering by a column the file does not have throws an `UnexpectedValueException`.
 
-## Partial match (Like)
+## Pattern match (Like)
+
+A `%` says the value may go on in that direction:
 
 ```php
 # Starts with hi
-Article::query()->where('tag', 'like', 'hi%')->get();
+Article::query()->whereLike('tag', 'hi%')->get();
 
 # Ends with hi
-Article::query()->where('tag', 'like', '%hi')->get();
+Article::query()->whereLike('tag', '%hi')->get();
 
 # Contains hi
-Article::query()->where('tag', 'like', '%hi%')->get();
+Article::query()->whereLike('tag', '%hi%')->get();
 
-# Same as the query above
-Article::query()->where('tag', 'like', 'hi')->get();
+# Exactly hi and nothing more
+Article::query()->whereLike('tag', 'hi')->get();
 
 # Everything that does not contain hi
-Article::query()->where('tag', 'not_like', '%hi%')->get();
+Article::query()->whereNotLike('tag', '%hi%')->get();
+
+# As an alternative to the condition before it
+Article::query()->where('id', 1)->orWhereLike('tag', '%hi%')->get();
+Article::query()->where('id', 1)->orWhereNotLike('tag', '%hi%')->get();
 ```
 
-## Loose match (Lax)
+A pattern without wildcards is matched against the whole value, the way sql `LIKE` behaves.
 
-Comparison is strict by default. `lax` compares case insensitively:
+The case is ignored by default, `caseSensitive` changes that:
 
 ```php
 # Matches NAME, name, namE, Name and so on
-User::query()->where('login', 'lax', 'name')->first();
+User::query()->whereLike('login', 'name')->first();
+
+# Only name
+User::query()->whereLike('login', 'name', caseSensitive: true)->first();
 ```
+
+An operator outside the list of comparisons throws an `InvalidArgumentException` — a typo such as `lke` fails on the spot instead of returning nothing.
 
 ## Sorting, limit and offset
 

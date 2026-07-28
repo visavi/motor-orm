@@ -12,6 +12,7 @@ use MotorORM\Tests\Models\Scratch;
 use MotorORM\Tests\Models\Story;
 use MotorORM\Query;
 use MotorORM\SortOrder;
+use MotorORM\Table;
 use PHPUnit\Framework\Attributes\CoversClass;
 use RuntimeException;
 use SplFileObject;
@@ -84,16 +85,20 @@ final class QueryBuilderTest extends TestCase
     }
 
     /**
-     * Querying a table that does not exist is an error
+     * Reading a table that does not exist is an error
+     *
+     * Building the query is not: nothing has been asked of the table yet
      */
     public function testQueryingAMissingTable(): void
     {
         @unlink((new Scratch())->getPath());
 
+        $query = Scratch::query()->where('id', 1);
+
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessage('does not exist');
 
-        Scratch::query();
+        $query->get();
     }
 
     /**
@@ -127,7 +132,7 @@ final class QueryBuilderTest extends TestCase
         $written = 0;
 
         try {
-            Item::query()->rewrite(function (array $current, SplFileObject $target) use (&$written) {
+            new Table(new Item())->rewrite(function (array $current, SplFileObject $target) use (&$written) {
                 $target->fputcsv($current);
 
                 /* Two rows are in the new file already when this blows up */

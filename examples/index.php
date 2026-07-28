@@ -81,11 +81,11 @@ $show(
 $title('Условие со сравнением');
 $show(Article::query()->where('created_at', '>=', '2009-01-06 08:40:35')->get());
 
-$title('Поиск like');
-$show(Article::query()->where('title', 'like', '%овок15')->get());
+$title('Поиск whereLike');
+$show(Article::query()->whereLike('title', '%овок15')->get());
 
-$title('Регистронезависимый поиск lax');
-$show(Article::query()->where('name', 'lax', 'миша')->limit(2)->get());
+$title('whereLike без подстановок, регистр не важен');
+$show(Article::query()->whereLike('name', 'миша')->limit(2)->get());
 
 $title('whereIn');
 $show(Article::query()->whereIn('id', [1, 3, 4, 7])->get());
