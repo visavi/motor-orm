@@ -158,6 +158,8 @@ before upgrading. Any other csv parser reads these files as they are.
 - `count()` with a condition counted the first row of the table twice.
 - A read started while another one was going on cut the first one short.
 - `limit(0)` returned nothing instead of throwing `OutOfBoundsException`.
+- `first()` reads from where `offset()` says, as `get()` and `cursor()` do; it
+  used to read from the start of the table whatever the offset was.
 
 ### Performance
 
