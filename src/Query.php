@@ -31,13 +31,6 @@ final class Query
      */
     public function __construct(private readonly Model $model) {}
 
-    /** Separator, enclosure and escape character used for every csv file */
-    /**
-     * The cast the primary key gets when the model declares none: a generated
-     * key is a number and reads back as one, a key that is not stays untouched
-     */
-    private const string CAST_KEY = 'primary_key';
-
     protected int $offset = 0;
     protected int $limit = -1;
     protected array $headers;
@@ -52,9 +45,6 @@ final class Query
     private array $rows = [];
     protected array $with = [];
     protected array $where = [];
-
-    protected ?string $paginateView = null;
-    protected ?string $paginateName = null;
 
     /**
      * Open file
@@ -348,20 +338,60 @@ final class Query
     /**
      * Get records with paginate
      *
-     * @param int $limit
+     * Which page to show is decided by the caller, reading the request is
+     * none of the query's business
      *
-     * @return CollectionPaginate<static>
+     * @param int $limit
+     * @param int $page
+     *
+     * @return Pagination<static>
      */
-    public function paginate(int $limit = 10): CollectionPaginate
+    public function paginate(int $limit = 10, int $page = 1): Pagination
     {
-        $paginator = new Pagination($this->paginateView, $this->paginateName);
-        $paginator = $paginator->create($this->count(), $limit);
+        $total = $this->count();
+
+        /* Which rows to skip has to be known before they are read */
+        $page   = min(max(1, $page), Pagination::lastPageOf($total, $limit));
+        $offset = $page * $limit - $limit;
 
         $this->filtering();
         $this->sorting();
-        $this->iterator = new LimitIterator($this->iterator, $paginator->offset, $paginator->limit);
+        $this->iterator = new LimitIterator($this->iterator, $offset, $limit);
 
-        return new CollectionPaginate($this->mapper($this->iterator), $paginator);
+        return new Pagination($this->mapper($this->iterator), $total, $limit, $page);
+    }
+
+    /**
+     * Get records with paginate, without counting the table
+     *
+     * One row past the page is read to know whether another page follows. That
+     * is the whole difference from paginate(): there are no page numbers and no
+     * total, and the table is never read to the end to find them out
+     *
+     * @param int $limit
+     * @param int $page
+     *
+     * @return SimplePagination<static>
+     */
+    public function simplePaginate(int $limit = 10, int $page = 1): SimplePagination
+    {
+        $page   = max(1, $page);
+        $offset = $page * $limit - $limit;
+
+        $this->filtering();
+        $this->sorting();
+        $this->iterator = new LimitIterator($this->iterator, $offset, $limit + 1);
+
+        $records = $this->mapper($this->iterator);
+        $hasMore = count($records) > $limit;
+
+        if ($hasMore) {
+            /* The row that told us was never part of the page */
+            array_pop($records);
+            $this->rows = $records;
+        }
+
+        return new SimplePagination($records, $limit, $page, $hasMore);
     }
 
     /**
@@ -614,11 +644,10 @@ final class Query
         $fieldCount = count($headers);
         $casts      = $this->model->getCasts();
 
-        if ($this->primary !== null && ! isset($casts[$this->primary])) {
-            $casts[$this->primary] = self::CAST_KEY;
-        }
+        /* The key is cast by the orm that generated it, unless the model says otherwise */
+        $primary = $this->primary !== null && ! isset($casts[$this->primary]) ? $this->primary : null;
 
-        return function (array $record) use ($headers, $fieldCount, $casts): array {
+        return function (array $record) use ($headers, $fieldCount, $casts, $primary): array {
             if (count($record) !== $fieldCount) {
                 $record = array_slice(array_pad($record, $fieldCount, null), 0, $fieldCount);
             }
@@ -631,6 +660,11 @@ final class Query
                 } elseif (isset($casts[$field])) {
                     $record[$field] = $this->cast($casts[$field], $value);
                 }
+            }
+
+            /* A generated key is a number and reads back as one, a key that is not stays a string */
+            if ($primary !== null && is_numeric($record[$primary])) {
+                $record[$primary] = (int) $record[$primary];
             }
 
             return $record;
@@ -937,7 +971,6 @@ final class Query
     private function cast(string $cast, mixed $value): mixed
     {
         return match ($cast) {
-            self::CAST_KEY => is_numeric($value) ? (int) $value : $value,
             'int', 'integer' => (int) $value,
             'real', 'float', 'double' => (float) $value,
             'string' => (string) $value,

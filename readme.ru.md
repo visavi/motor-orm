@@ -2,7 +2,9 @@
 
 ООП подход для работы с текстовыми данными, сохранёнными в файловой системе.
 
-Формат данных CSV совместим, но с некоторыми отступлениями ради более быстрого чтения.
+Данные лежат в обычных CSV по RFC 4180: кавычка внутри значения удваивается,
+экранирующего символа нет. Такой файл одинаково прочитают и эта библиотека, и
+любой другой парсер.
 
 [English version](readme.md)
 
@@ -91,7 +93,7 @@ Article::query()->where('name', 'Миша')->get();
 Article::query()->where('name', 'Миша')->exists();
 
 # Сколько записей подходит под условия
-Article::query()->where('time', '>', 1231231234)->count();
+Article::query()->where('created_at', '>', '2009-01-06 08:40:34')->count();
 
 # Заголовки колонок файла
 Article::query()->headers();
@@ -128,7 +130,7 @@ $article->toArray();
 Article::query()->where('name', 'Миша')->get();
 
 # Явный оператор: = != <> > >= < <= like not_like lax
-Article::query()->where('time', '>=', 1231231235)->get();
+Article::query()->where('created_at', '>=', '2009-01-06 08:40:35')->get();
 
 # Или
 Article::query()->where('id', 1)->orWhere('id', 2)->get();
@@ -191,7 +193,7 @@ Article::query()->orderBy('created_at', SortOrder::Desc)->get();
 
 # Несколько колонок, в порядке добавления
 Article::query()
-    ->orderByDesc('time')
+    ->orderByDesc('created_at')
     ->orderBy('id')
     ->limit(3)
     ->get();
@@ -202,6 +204,22 @@ Article::query()->offset(10)->limit(10)->get();
 
 Сортировка держит подходящие строки в памяти, поэтому на большом файле сначала
 имеет смысл сузить выборку через `where()`.
+
+Направление — это `SortOrder`, поэтому опечатка до запроса не доедет. Когда оно
+приходит из запроса, проверкой служит `tryFrom()`: неизвестная строка становится
+`null`, и срабатывает запасной вариант:
+
+```php
+$sort = SortOrder::tryFrom($_GET['dir'] ?? '') ?? SortOrder::Asc;
+
+Article::query()->orderBy('created_at', $sort)->get();
+```
+
+`$sort->value` возвращает строку обратно — для ссылки, переключающей направление:
+
+```php
+$articles->appends(['dir' => $sort->value]);
+```
 
 ## Обход большой таблицы
 
@@ -271,7 +289,7 @@ class Story extends Model
 {
     protected array $casts = [
         'user_id'    => 'int',
-        'created_at' => 'int',
+        'views'      => 'int',
         'rating'     => 'int',
         'locked'     => 'bool',
         'meta'       => 'array',
@@ -521,20 +539,109 @@ $articles->keyBy(fn ($a) => 'row' . $a->id);
 
 ## Пагинация
 
-`paginate()` возвращает `CollectionPaginate` — коллекцию, знающую о страницах.
-Текущая страница читается из `$_GET['page']`.
+`paginate()` возвращает `Pagination` — коллекцию, знающую о страницах.
+Какую страницу показывать, решаете вы: библиотека не читает запрос:
 
 ```php
-$articles = Article::query()->paginate(10);
+$articles = Article::query()->paginate(10, (int) ($_GET['page'] ?? 1));
 
 foreach ($articles as $article) {
     echo $article->title;
 }
 
 echo $articles->currentPage();
+echo $articles->lastPage();
+echo $articles->perPage();
 echo $articles->total();
-echo $articles->withPath('/articles')->appends(['sort' => 'new'])->links();
+
+if ($articles->hasPages()) {
+    echo $articles->withPath('/articles')->appends(['sort' => 'new'])->links();
+}
 ```
+
+Остальное говорит, где страница стоит среди всех строк:
+
+```php
+# Показаны 11–20 из 45
+printf('Показаны %d–%d из %d', $articles->firstItem(), $articles->lastItem(), $articles->total());
+
+# Оба null, если ничего не нашлось
+$articles->firstItem();
+$articles->lastItem();
+
+# Где мы находимся
+$articles->onFirstPage();
+$articles->onLastPage();
+
+# Ссылка на любую страницу, не только на показанные
+$articles->url($articles->lastPage());
+```
+
+Страница за пределами диапазона приводится к ближайшей, поэтому нелепое число
+в запросе не даст пустой список.
+
+### Пагинация без подсчёта
+
+Общее число строк — это то, что покупает нумерованные ссылки, и платят за него
+чтением всей таблицы. На таблице в 50 000 строк в этом и состоит вся стоимость
+страницы: выбрать десять строк первой страницы стоит 0.05 ms, посчитать
+остальные — 64.
+
+`simplePaginate()` не считает. Он читает на одну строку больше, чем нужно, и то,
+была ли она, — это весь ответ:
+
+```php
+$articles = Article::query()->simplePaginate(10, (int) ($_GET['page'] ?? 1));
+
+foreach ($articles as $article) {
+    echo $article->title;
+}
+
+echo $articles->withPath('/articles')->links();
+```
+
+| на 50 000 строк | первая страница | страница 4 900 |
+| --- | --- | --- |
+| `paginate(10)` | 64.09 ms | 128.05 ms |
+| `simplePaginate(10)` | 1.10 ms | 62.07 ms |
+
+Поздние страницы по-прежнему стоят прохода до своего смещения — от этого спасёт
+только индекс. Пропало то, что покупалось подсчётом: нет `total()` и
+`lastPage()`, а навигация состоит из двух стрелок вместо нумерованных страниц.
+Остальное на месте — `currentPage()`, `perPage()`, `firstItem()`, `lastItem()`,
+`onFirstPage()`, `onLastPage()`, `hasMorePages()`, `url()`, `links()`.
+
+`simplePaginate()` возвращает `SimplePagination`. Методов, которым нужен
+подсчёт, у него просто нет, поэтому обращение к ним падает там, где написано, а
+не в глубине библиотеки.
+
+Оба — коллекции строк своей страницы и делят общего предка `Paginator`, в
+котором лежит всё, что у них одинаково.
+
+`links()` печатает разметку Bootstrap 5. Для любой другой передайте свой шаблон,
+остальное настраивается через `setPageName()` и `onEachSide()`:
+
+```php
+echo $articles->setPageName('p')->onEachSide(3)->links(__DIR__ . '/views/pagination.php');
+```
+
+В шаблон приходит `$pages` — массив объектов `Page`:
+
+```php
+<?php foreach ($pages as $page): ?>
+    <?php if ($page->separator): ?>
+        …
+    <?php elseif ($page->current): ?>
+        <b><?= $page->name ?></b>
+    <?php else: ?>
+        <a href="<?= htmlspecialchars($page->url, ENT_QUOTES) ?>"><?= $page->name ?></a>
+    <?php endif; ?>
+<?php endforeach; ?>
+```
+
+`name` — что печатать, номер страницы или стрелка, `url` — куда ведёт (`null` у
+текущей страницы и у разделителя), `number` — номер страницы, на которую ведёт.
+Экранирование — дело шаблона: встроенный печатает html, а ваш может и не печатать.
 
 ## Миграции
 

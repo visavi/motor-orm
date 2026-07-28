@@ -57,7 +57,7 @@ final class QueryTest extends TestCase
         $find = Article::query()
             ->where('id', 1)
             ->orWhere(static function (Query $query) {
-                $query->where('name', 'Миша')->where('time', 1231231236);
+                $query->where('name', 'Миша')->where('created_at', '2009-01-06 08:40:36');
             })
             ->get();
 
@@ -196,7 +196,8 @@ final class QueryTest extends TestCase
 
         $this->assertSame('3f2a-9b', $find->uuid_id);
         $this->assertSame('2026-07-28 12:30:00', $find->created_at);
-        $this->assertSame('1231231234', $find->updated_at);
+        $this->assertSame('2026-07-28 13:15:00', $find->updated_at);
+        $this->assertSame('42', $find->views);
     }
 
     /**
@@ -234,9 +235,11 @@ final class QueryTest extends TestCase
     {
         $find = CastedEvent::query()->find(1);
 
-        $this->assertSame(1, $find->id);
-        $this->assertSame(1231231234, $find->updated_at);
+        $this->assertSame(42, $find->views);
+
+        /* The neighbouring dates were not declared, so they stay as they were read */
         $this->assertSame('2026-07-28 12:30:00', $find->created_at);
+        $this->assertSame('2026-07-28 13:15:00', $find->updated_at);
     }
 
     /**
@@ -247,6 +250,7 @@ final class QueryTest extends TestCase
     {
         $find = CastedEvent::query()->find(2);
 
+        $this->assertNull($find->views);
         $this->assertNull($find->updated_at);
         $this->assertNull($find->title);
     }

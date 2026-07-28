@@ -9,6 +9,7 @@ use ArrayIterator;
 use Closure;
 use Countable;
 use IteratorAggregate;
+use NoDiscard;
 use Traversable;
 
 /**
@@ -263,7 +264,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      *
      * @return self
      */
-    #[\NoDiscard('the collection is not changed in place, use the one that is returned')]
+    #[NoDiscard('the collection is not changed in place, use the one that is returned')]
     public function slice(int $offset, ?int $length = null): self
     {
         return new self(array_slice($this->items, $offset, $length, true));
@@ -277,7 +278,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      *
      * @return self
      */
-    #[\NoDiscard('the collection is not changed in place, use the one that is returned')]
+    #[NoDiscard('the collection is not changed in place, use the one that is returned')]
     public function pluck(string $value, ?string $key = null): self
     {
         if ($key === null) {
@@ -297,7 +298,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      *
      * @return self
      */
-    #[\NoDiscard('the collection is not changed in place, use the one that is returned')]
+    #[NoDiscard('the collection is not changed in place, use the one that is returned')]
     public function keyBy(string|Closure $key): self
     {
         $keyed = [];
@@ -325,7 +326,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      *
      * @return self
      */
-    #[\NoDiscard('the collection is not changed in place, use the one that is returned')]
+    #[NoDiscard('the collection is not changed in place, use the one that is returned')]
     public function filter(?callable $callback = null): self
     {
         if ($callback) {

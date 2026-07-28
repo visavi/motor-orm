@@ -22,8 +22,14 @@ use UnexpectedValueException;
  */
 abstract class Model
 {
-    /** Separator, enclosure and escape character used for every csv file */
-    public const array CSV_CONTROL = [',', '"', '\\'];
+    /**
+     * Separator, enclosure and escape character used for every csv file
+     *
+     * Nothing escapes: a quote inside a value is written twice, as RFC 4180
+     * says. The backslash php escapes with by default cannot close a value
+     * that ends in one, so such a value used to run into the rows below
+     */
+    public const array CSV_CONTROL = [',', '"', ''];
 
     /** Path to the data file, relative to tableDir when it is set */
     protected string $table;
@@ -42,7 +48,7 @@ abstract class Model
      */
     public static function query(): Query
     {
-        return (new Query(new static()))->open();
+        return new Query(new static())->open();
     }
 
     /**
@@ -105,7 +111,7 @@ abstract class Model
     }
 
     /**
-     * Declare a one to one relation
+     * Declare a one-to-one relation
      *
      * @param string      $model
      * @param string|null $foreignKey
@@ -119,7 +125,7 @@ abstract class Model
     }
 
     /**
-     * Declare a one to many relation
+     * Declare a one-to-many relation
      *
      * @param string      $model
      * @param string|null $foreignKey
@@ -133,7 +139,7 @@ abstract class Model
     }
 
     /**
-     * Declare a many to many relation through an intermediate table
+     * Declare a many-to-many relation through an intermediate table
      *
      * @param string      $model
      * @param string      $through

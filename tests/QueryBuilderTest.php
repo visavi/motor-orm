@@ -3,7 +3,7 @@
 namespace MotorORM\Tests;
 
 use MotorORM\Collection;
-use MotorORM\CollectionPaginate;
+use MotorORM\Pagination;
 use MotorORM\Tests\Models\Article;
 use MotorORM\Tests\Models\Setting;
 use MotorORM\Tests\Models\Item;
@@ -26,6 +26,37 @@ final class QueryBuilderTest extends TestCase
     protected function setUp(): void
     {
         Item::query()->truncate();
+    }
+
+    /**
+     * A value is read back as it was written, whatever it holds
+     *
+     * A backslash before the closing quote used to escape it, so a value
+     * ending in one ran into the rows below and took them with it
+     */
+    public function testValuesSurviveTheirPunctuation(): void
+    {
+        $values = [
+            'запятая'        => 'a,b',
+            'кавычка'        => 'он сказал "да"',
+            'перевод строки' => "первая\nвторая",
+            'слеш внутри'    => 'путь\к\файлу',
+            'слеш в конце'   => 'C:\каталог\\',
+            'слеш и кавычка' => 'конец\"хвост',
+            'два слеша'      => 'a\\\\b',
+        ];
+
+        foreach ($values as $name => $value) {
+            Item::query()->create(['name' => $name, 'value' => $value]);
+        }
+
+        $read = Item::query()->get();
+
+        $this->assertCount(count($values), $read);
+
+        foreach (array_values($values) as $index => $value) {
+            $this->assertSame($value, $read[$index]->value, $read[$index]->name);
+        }
     }
 
     /**
@@ -209,7 +240,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function testWhere(): void
     {
-        $find = Article::query()->where('time', '>=', 1231231235)->get();
+        $find = Article::query()->where('created_at', '>=', '2009-01-06 08:40:35')->get();
 
         $this->assertInstanceOf(Collection::class, $find);
         //$this->assertClassHasAttribute('elements', Collection::class);
@@ -217,9 +248,9 @@ final class QueryBuilderTest extends TestCase
         $this->assertIsObject($find[0]);
         $this->assertCount(3, $find);
         //$this->assertObjectHasAttribute('attr', $find[0]);
-        $this->assertGreaterThanOrEqual('1231231235', $find[0]->time);
-        $this->assertGreaterThanOrEqual('1231231235', $find[1]->time);
-        $this->assertGreaterThanOrEqual('1231231235', $find[2]->time);
+        $this->assertGreaterThanOrEqual('2009-01-06 08:40:35', $find[0]->created_at);
+        $this->assertGreaterThanOrEqual('2009-01-06 08:40:35', $find[1]->created_at);
+        $this->assertGreaterThanOrEqual('2009-01-06 08:40:35', $find[2]->created_at);
     }
 
     /**
@@ -228,11 +259,11 @@ final class QueryBuilderTest extends TestCase
      */
     public function testWherePaginate(): void
     {
-        $find = Article::query()->where('time', '>=', 1231231235)->paginate(2);
+        $find = Article::query()->where('created_at', '>=', '2009-01-06 08:40:35')->paginate(2);
 
-        $this->assertInstanceOf(CollectionPaginate::class, $find);
-        //$this->assertClassHasAttribute('elements', CollectionPaginate::class);
-        //$this->assertClassHasAttribute('paginator', CollectionPaginate::class);
+        $this->assertInstanceOf(Pagination::class, $find);
+        //$this->assertClassHasAttribute('elements', Pagination::class);
+        //$this->assertClassHasAttribute('paginator', Pagination::class);
         $this->assertIsObject($find[0]);
         $this->assertCount(2, $find);
         //$this->assertObjectHasAttribute('attr', $find[0]);
@@ -293,7 +324,7 @@ final class QueryBuilderTest extends TestCase
      */
     public function testWhereCount(): void
     {
-        $find = Article::query()->where('time', '>', 1231231234)->count();
+        $find = Article::query()->where('created_at', '>', '2009-01-06 08:40:34')->count();
 
         $this->assertEquals(3, $find);
     }
@@ -325,7 +356,7 @@ final class QueryBuilderTest extends TestCase
         $this->assertEquals('name', $find[1]);
         $this->assertEquals('title', $find[2]);
         $this->assertEquals('text', $find[3]);
-        $this->assertEquals('time', $find[4]);
+        $this->assertEquals('created_at', $find[4]);
     }
 
     /**
@@ -430,11 +461,11 @@ final class QueryBuilderTest extends TestCase
     }
 
     /**
-     * Find by name and sort (time asc)
+     * Find by name and sort (created_at asc)
      */
     public function testSort(): void
     {
-        $find = Article::query()->where('name', 'Миша')->orderBy('time')->limit(3)->get();
+        $find = Article::query()->where('name', 'Миша')->orderBy('created_at')->limit(3)->get();
 
         $this->assertCount(3, $find);
         $this->assertEquals(10, $find[0]->id);
@@ -442,11 +473,11 @@ final class QueryBuilderTest extends TestCase
     }
 
     /**
-     * Find by name and double sort (time desc, id desc)
+     * Find by name and double sort (created_at desc, id desc)
      */
     public function testDoubleSort(): void
     {
-        $find = Article::query()->where('name', 'Миша')->orderBy('time', SortOrder::Desc)->orderByDesc('id')->limit(3)->get();
+        $find = Article::query()->where('name', 'Миша')->orderBy('created_at', SortOrder::Desc)->orderByDesc('id')->limit(3)->get();
 
         $this->assertCount(3, $find);
         $this->assertEquals(18, $find[0]->id);
@@ -702,7 +733,7 @@ final class QueryBuilderTest extends TestCase
             'name'  => 'Петя',
             'title' => 'Заголовок1',
             'text'  => 'Текст',
-            'time'  => '1231231234',
+            'created_at' => '2009-01-06 08:40:34',
         ], $find->toArray());
     }
 

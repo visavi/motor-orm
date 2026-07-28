@@ -12,6 +12,7 @@ use MotorORM\Query;
  * @property string $uuid_id
  * @property string $created_at
  * @property string $updated_at
+ * @property string $views
  * @property string $title
  */
 class Event extends Model

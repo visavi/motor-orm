@@ -1,3 +1,3 @@
-id,uuid_id,created_at,updated_at,title
-1,3f2a-9b,2026-07-28 12:30:00,1231231234,Hello
-2,7c1d-4e,2026-07-29 09:00:00,,
+id,uuid_id,created_at,updated_at,views,title
+1,3f2a-9b,2026-07-28 12:30:00,2026-07-28 13:15:00,42,Hello
+2,7c1d-4e,2026-07-29 09:00:00,,,

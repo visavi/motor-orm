@@ -2,7 +2,10 @@
 
 namespace MotorORM\Tests;
 
+use InvalidArgumentException;
 use MotorORM\Collection;
+use MotorORM\Relation;
+use MotorORM\RelationType;
 use MotorORM\Tests\Models\Story;
 use MotorORM\Tests\Models\User;
 use MotorORM\Query;
@@ -12,6 +15,16 @@ use RuntimeException;
 #[CoversClass(Query::class)]
 final class RelationTest extends TestCase
 {
+    /**
+     * A relation through nothing goes nowhere
+     */
+    public function testRelationThroughNothing(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new Relation(RelationType::HasManyThrough, Story::class);
+    }
+
     /**
      * Lazy loaded hasOne relation
      *

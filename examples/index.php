@@ -79,7 +79,7 @@ $show(
 );
 
 $title('Условие со сравнением');
-$show(Article::query()->where('time', '>=', 1231231235)->get());
+$show(Article::query()->where('created_at', '>=', '2009-01-06 08:40:35')->get());
 
 $title('Поиск like');
 $show(Article::query()->where('title', 'like', '%овок15')->get());
@@ -94,7 +94,7 @@ $title('whereNotIn');
 $show(Article::query()->whereNotIn('id', range(1, 15))->get());
 
 $title('Количество записей');
-$show(Article::query()->where('time', '>', 1231231234)->count());
+$show(Article::query()->where('created_at', '>', '2009-01-06 08:40:34')->count());
 
 $title('Смещение и лимит');
 $show(Article::query()->offset(0)->limit(3)->get());
@@ -102,8 +102,8 @@ $show(Article::query()->offset(0)->limit(3)->get());
 $title('Последние 3 записи');
 $show(Article::query()->orderByDesc('id')->limit(3)->get());
 
-$title('Двойная сортировка (time asc, id desc)');
-$show(Article::query()->where('name', 'Миша')->orderBy('time')->orderByDesc('id')->limit(3)->get());
+$title('Двойная сортировка (created_at asc, id desc)');
+$show(Article::query()->where('name', 'Миша')->orderBy('created_at')->orderByDesc('id')->limit(3)->get());
 
 $title('Заголовки таблицы');
 $show(Article::query()->headers());
@@ -145,7 +145,27 @@ foreach (Story::query()->with(['user', 'tags'])->get() as $story) {
 }
 
 $title('Пагинация');
-$paginate = Article::query()->paginate(5);
-echo 'страница ' . $paginate->currentPage() . ' из ' . (int) ceil($paginate->total() / 5) . $eol;
+$paginate = Article::query()->paginate(5, (int) ($_GET['page'] ?? 2));
+printf(
+    'страница %d из %d, показаны %d–%d из %d%s',
+    $paginate->currentPage(),
+    $paginate->lastPage(),
+    $paginate->firstItem(),
+    $paginate->lastItem(),
+    $paginate->total(),
+    $eol,
+);
 $show($paginate);
 echo $paginate->withPath('/list')->links() . $eol;
+
+$title('Пагинация без подсчёта');
+$simple = Article::query()->simplePaginate(5, (int) ($_GET['page'] ?? 2));
+printf(
+    'страница %d, показаны %d–%d, дальше %s%s',
+    $simple->currentPage(),
+    $simple->firstItem(),
+    $simple->lastItem(),
+    $simple->hasMorePages() ? 'есть' : 'ничего',
+    $eol,
+);
+echo $simple->withPath('/list')->links() . $eol;

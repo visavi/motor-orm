@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MotorORM;
 
 use Closure;
+use InvalidArgumentException;
 
 /**
  * Description of a relation between two tables
@@ -20,13 +21,13 @@ use Closure;
 class Relation
 {
     /**
-     * @param RelationType $type
-     * @param string      $model            class of the table being related to
-     * @param string|null $foreignKey       column of the related table, guessed when null
-     * @param string|null $localKey         column of this table, guessed when null
-     * @param string|null $through          class of the intermediate table
-     * @param string|null $secondForeignKey column of the related table the intermediate one points at
-     * @param string|null $secondLocalKey   column of the intermediate table, guessed when null
+     * @param RelationType             $type
+     * @param class-string<Model>      $model            class of the table being related to
+     * @param string|null              $foreignKey       column of the related table, guessed when null
+     * @param string|null              $localKey         column of this table, guessed when null
+     * @param class-string<Model>|null $through          class of the intermediate table, required by hasManyThrough
+     * @param string|null              $secondForeignKey column of the related table the intermediate one points at
+     * @param string|null              $secondLocalKey   column of the intermediate table, guessed when null
      */
     public function __construct(
         public readonly RelationType $type,
@@ -36,7 +37,13 @@ class Relation
         public readonly ?string $through = null,
         public ?string $secondForeignKey = null,
         public ?string $secondLocalKey = null,
-    ) {}
+    ) {
+        if ($type === RelationType::HasManyThrough && $through === null) {
+            throw new InvalidArgumentException(
+                sprintf('%s() a relation through nothing goes nowhere, name the intermediate table', __METHOD__)
+            );
+        }
+    }
 
     /** Extra conditions the declaration puts on the related table */
     private ?Closure $constraint = null;
@@ -89,7 +96,6 @@ class Relation
     public function resolve(Query $parent): static
     {
         $related = $this->model;
-        $through = $this->through;
 
         $this->localKey ??= $parent->getPrimaryKey();
 
@@ -102,6 +108,9 @@ class Relation
         $this->foreignKey ??= $parent->getForeignKey();
 
         if ($this->type === RelationType::HasManyThrough) {
+            /* The constructor saw to it that a relation through nothing was never built */
+            $through = $this->through;
+
             $this->secondForeignKey ??= $related::query()->getForeignKey();
             $this->secondLocalKey   ??= $through::query()->getPrimaryKey();
         }

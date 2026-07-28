@@ -2,7 +2,8 @@
 
 An object oriented way to work with text data stored in the file system.
 
-The data format is CSV compatible, with a few deviations that make reading faster.
+The data lives in plain RFC 4180 csv: a quote inside a value is written twice
+and nothing escapes. Such a file reads the same here and in any other parser.
 
 [Русская версия](readme.ru.md)
 
@@ -91,7 +92,7 @@ Article::query()->where('name', 'Misha')->get();
 Article::query()->where('name', 'Misha')->exists();
 
 # How many records match
-Article::query()->where('time', '>', 1231231234)->count();
+Article::query()->where('created_at', '>', '2009-01-06 08:40:34')->count();
 
 # The column names of the file
 Article::query()->headers();
@@ -128,7 +129,7 @@ nothing on a record near the top of the file.
 Article::query()->where('name', 'Misha')->get();
 
 # An explicit operator: = != <> > >= < <= like not_like lax
-Article::query()->where('time', '>=', 1231231235)->get();
+Article::query()->where('created_at', '>=', '2009-01-06 08:40:35')->get();
 
 # Or
 Article::query()->where('id', 1)->orWhere('id', 2)->get();
@@ -191,7 +192,7 @@ Article::query()->orderBy('created_at', SortOrder::Desc)->get();
 
 # Several columns, applied in the order they were added
 Article::query()
-    ->orderByDesc('time')
+    ->orderByDesc('created_at')
     ->orderBy('id')
     ->limit(3)
     ->get();
@@ -202,6 +203,22 @@ Article::query()->offset(10)->limit(10)->get();
 
 Sorting buffers the matching rows in memory, so prefer narrowing the query with
 `where()` before ordering a large file.
+
+The direction is a `SortOrder`, so a misspelt one cannot reach the query. When
+it comes from the request, `tryFrom()` is the check — an unknown string becomes
+`null` and the fallback takes over:
+
+```php
+$sort = SortOrder::tryFrom($_GET['dir'] ?? '') ?? SortOrder::Asc;
+
+Article::query()->orderBy('created_at', $sort)->get();
+```
+
+`$sort->value` gives the string back, for the link that flips the direction:
+
+```php
+$articles->appends(['dir' => $sort->value]);
+```
 
 ## Walking a large table
 
@@ -270,7 +287,7 @@ class Story extends Model
 {
     protected array $casts = [
         'user_id'    => 'int',
-        'created_at' => 'int',
+        'views'      => 'int',
         'rating'     => 'int',
         'locked'     => 'bool',
         'meta'       => 'array',
@@ -518,20 +535,109 @@ $articles->keyBy(fn ($a) => 'row' . $a->id);
 
 ## Pagination
 
-`paginate()` returns a `CollectionPaginate`, a collection that knows about pages.
-The current page is read from `$_GET['page']`.
+`paginate()` returns a `Pagination`, a collection that knows about pages.
+Which page to show is up to you, the library never reads the request:
 
 ```php
-$articles = Article::query()->paginate(10);
+$articles = Article::query()->paginate(10, (int) ($_GET['page'] ?? 1));
 
 foreach ($articles as $article) {
     echo $article->title;
 }
 
 echo $articles->currentPage();
+echo $articles->lastPage();
+echo $articles->perPage();
 echo $articles->total();
-echo $articles->withPath('/articles')->appends(['sort' => 'new'])->links();
+
+if ($articles->hasPages()) {
+    echo $articles->withPath('/articles')->appends(['sort' => 'new'])->links();
+}
 ```
+
+The rest tells you where the page stands among all the rows:
+
+```php
+# Showing 11 to 20 of 45
+printf('Showing %d to %d of %d', $articles->firstItem(), $articles->lastItem(), $articles->total());
+
+# null on both when nothing matched
+$articles->firstItem();
+$articles->lastItem();
+
+# Where the page stands
+$articles->onFirstPage();
+$articles->onLastPage();
+
+# The url of any page, not only of the ones on show
+$articles->url($articles->lastPage());
+```
+
+A page out of range falls back to the nearest one, so an absurd number in the
+request cannot produce an empty listing.
+
+### Pagination without counting
+
+Knowing the total is what buys the numbered links, and it is paid for by reading
+the whole table. On a table of 50 000 rows that is the entire cost of a page:
+fetching the ten rows of page one takes 0.05 ms, counting the rest takes 64.
+
+`simplePaginate()` does not count. It reads one row past the page, and whether
+that row was there is the whole answer:
+
+```php
+$articles = Article::query()->simplePaginate(10, (int) ($_GET['page'] ?? 1));
+
+foreach ($articles as $article) {
+    echo $article->title;
+}
+
+echo $articles->withPath('/articles')->links();
+```
+
+| on 50 000 rows | first page | page 4 900 |
+| --- | --- | --- |
+| `paginate(10)` | 64.09 ms | 128.05 ms |
+| `simplePaginate(10)` | 1.10 ms | 62.07 ms |
+
+Later pages still cost the walk to their offset, which nothing but an index can
+avoid. What the counting bought is gone: there is no `total()` and no
+`lastPage()`, and the navigation is two arrows instead of numbered pages. The
+rest is the same — `currentPage()`, `perPage()`, `firstItem()`, `lastItem()`,
+`onFirstPage()`, `onLastPage()`, `hasMorePages()`, `url()`, `links()`.
+
+`simplePaginate()` returns a `SimplePagination`. The methods that need a total
+are not on it at all, so asking for one fails where it is written rather than
+deep inside.
+
+Both are collections of the rows of their page and share a `Paginator` that
+holds everything they have in common.
+
+`links()` renders Bootstrap 5 markup. Pass a template of your own to get anything
+else, and tune the rest with `setPageName()` and `onEachSide()`:
+
+```php
+echo $articles->setPageName('p')->onEachSide(3)->links(__DIR__ . '/views/pagination.php');
+```
+
+The template is given `$pages`, an array of `Page` objects:
+
+```php
+<?php foreach ($pages as $page): ?>
+    <?php if ($page->separator): ?>
+        …
+    <?php elseif ($page->current): ?>
+        <b><?= $page->name ?></b>
+    <?php else: ?>
+        <a href="<?= htmlspecialchars($page->url, ENT_QUOTES) ?>"><?= $page->name ?></a>
+    <?php endif; ?>
+<?php endforeach; ?>
+```
+
+`name` is what to print — a page number or an arrow, `url` is where it leads
+(`null` on the current page and on a separator) and `number` is the page it
+leads to. Escaping is the template's business, since the built-in one writes
+html but yours might not.
 
 ## Migrations
 

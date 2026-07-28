@@ -12,7 +12,7 @@ use MotorORM\Query;
  * @property string $name
  * @property string $title
  * @property string $text
- * @property string $time
+ * @property string $created_at
  */
 class Article extends Model
 {

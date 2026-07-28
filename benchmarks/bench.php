@@ -57,6 +57,8 @@ $readCases = [
     'orderByDesc + limit 10'      => static fn () => count(Bench::query()->orderByDesc('id')->limit(10)->get()) . ' зап.',
     'orderBy двойная сортировка'  => static fn () => count(Bench::query()->orderBy('time')->orderByDesc('id')->limit(10)->get()) . ' зап.',
     'paginate(10)'                => static fn () => count(Bench::query()->paginate(10)) . ' зап.',
+    'simplePaginate(10)'          => static fn () => count(Bench::query()->simplePaginate(10)) . ' зап.',
+    'simplePaginate поздняя стр.' => static fn () => count(Bench::query()->simplePaginate(10, 4900)) . ' зап.',
     'whereIn 100 значений'        => static fn () => count(Bench::query()->whereIn('id', range(1, 100))->get()) . ' зап.',
     'like %подстрока%'            => static fn () => Bench::query()->where('title', 'like', '%овок499%')->count() . ' зап.',
     'три условия AND'             => static fn () => Bench::query()

@@ -27,7 +27,7 @@ class Record
     public function __construct(
         private readonly Query $query,
         /** Column name => value, changed through the record itself only */
-        public private(set) array $attr = [],
+        private(set) array $attr = [],
     ) {}
 
     /**

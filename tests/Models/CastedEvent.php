@@ -5,13 +5,13 @@ namespace MotorORM\Tests\Models;
 /**
  * The same table with the types spelled out
  *
- * @property int $id
- * @property int $updated_at
+ * The key is not among them: a numeric one reads back as an int on its own
+ *
+ * @property int $views
  */
 class CastedEvent extends Event
 {
     protected array $casts = [
-        'id'         => 'int',
-        'updated_at' => 'int',
+        'views' => 'int',
     ];
 }
