@@ -19,15 +19,15 @@ use UnexpectedValueException;
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
  */
-final class RecordMapper
+final readonly class RecordMapper
 {
     /**
      * @param Model $model the table the values belong to
      * @param Table $table where the column names are read from
      */
     public function __construct(
-        private readonly Model $model,
-        private readonly Table $table,
+        private Model $model,
+        private Table $table,
     ) {}
 
     /**

@@ -16,12 +16,12 @@ namespace MotorORM;
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
  */
-final class RelationLoader
+final readonly class RelationLoader
 {
     /**
      * @param Query $parent the query the rows were read by
      */
-    public function __construct(private readonly Query $parent) {}
+    public function __construct(private Query $parent) {}
 
     /**
      * Attach a relation to every row

@@ -1,6 +1,8 @@
 # Motor ORM
 
 [![Packagist](https://img.shields.io/packagist/v/visavi/motor-orm.svg)](https://packagist.org/packages/visavi/motor-orm)
+[![Tests](https://github.com/visavi/motor-orm/actions/workflows/tests.yml/badge.svg)](https://github.com/visavi/motor-orm/actions/workflows/tests.yml)
+[![Coverage](https://coveralls.io/repos/github/visavi/motor-orm/badge.svg?branch=master)](https://coveralls.io/github/visavi/motor-orm?branch=master)
 [![PHP](https://img.shields.io/badge/php-%E2%89%A5%208.5-777bb4.svg)](https://www.php.net/releases/8.5/)
 [![Downloads](https://img.shields.io/packagist/dt/visavi/motor-orm.svg)](https://packagist.org/packages/visavi/motor-orm)
 [![License](https://img.shields.io/packagist/l/visavi/motor-orm.svg)](https://github.com/visavi/motor-orm/blob/master/composer.json)

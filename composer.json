@@ -1,6 +1,6 @@
 {
     "name": "visavi/motor-orm",
-    "description": "",
+    "description": "An ORM over plain CSV files: models, queries, relations, pagination and migrations, without a database server",
     "keywords": [
         "orm",
         "csv",

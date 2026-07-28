@@ -19,7 +19,7 @@ use UnexpectedValueException;
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
  */
-final class TableWriter
+final readonly class TableWriter
 {
     /**
      * @param Table        $table      the file being written
@@ -27,9 +27,9 @@ final class TableWriter
      * @param Conditions   $conditions which rows a write is meant for
      */
     public function __construct(
-        private readonly Table $table,
-        private readonly RecordMapper $mapper,
-        private readonly Conditions $conditions,
+        private Table        $table,
+        private RecordMapper $mapper,
+        private Conditions   $conditions,
     ) {}
 
     /**

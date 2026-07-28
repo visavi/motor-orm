@@ -1,0 +1,175 @@
+# Changelog
+
+## 5.0.0
+
+A model is no longer the record it reads. The library is now three things — a
+model that declares the table, a query that reads it and a record that holds the
+values — and everything below follows from that.
+
+### Requirements
+
+- PHP 8.5 or above, up from 8.0.
+
+### Breaking
+
+**`Builder` is gone, replaced by `Model`, `Query` and `Record`.** A model no
+longer doubles as the row it returns.
+
+```php
+// 4.x
+class Article extends Builder
+{
+    public string $table = __DIR__ . '/articles.csv';
+}
+
+$article = Article::query()->find(1);
+$article->title = 'Title';
+$article->save();
+
+// 5.0
+class Article extends Model
+{
+    public string $table = __DIR__ . '/articles.csv';
+}
+
+$article = Article::query()->find(1);   // Record
+$article->title = 'Title';
+$article->save();
+```
+
+The model keeps `$table`, `$tableDir` and `$casts`; the query keeps the
+conditions; the record keeps the values, `save()`, `delete()`, `update()` and
+`toArray()`. `refresh()` on a record is now `fresh()`.
+
+**Relations are declared on the model and say so in their return type.** Only a
+method returning `Relation` is treated as one, so reading a property can never
+run a method that does something else.
+
+```php
+// 4.x
+public function comments(): mixed
+{
+    return $this->hasMany(Comment::class);
+}
+
+// 5.0
+public function comments(): Relation
+{
+    return $this->hasMany(Comment::class);
+}
+```
+
+**Patterns are methods of their own.** The `like` and `not_like` operators are
+no longer accepted by `where()`, and an operator that is not known now throws
+instead of quietly matching nothing.
+
+```php
+// 4.x
+Article::query()->where('title', 'like', '%php%')->get();
+
+// 5.0
+Article::query()->whereLike('title', '%php%')->get();
+```
+
+Also available: `whereNotLike()`, `orWhereLike()`, `orWhereNotLike()`. Matching
+ignores case unless the last argument says otherwise.
+
+**Sorting takes an enum.** `Builder::SORT_ASC` and `SORT_DESC` are gone.
+
+```php
+Article::query()->orderBy('title', SortOrder::Desc)->get();
+Article::query()->orderByDesc('title')->get();          // the same, shorter
+```
+
+**Pagination is rebuilt and no longer reads the request.** `CollectionPaginate`
+is replaced by `Pagination` and `SimplePagination`, both collections of the rows
+of their page. The page number is passed in — where it came from is the
+application's business.
+
+```php
+// 4.x — the page was taken from $_GET inside the library
+$articles = Article::query()->paginate(10);
+
+// 5.0
+$page     = (int) ($_GET['page'] ?? 1);
+$articles = Article::query()->paginate(10, $page);
+
+echo $articles->links();
+```
+
+`simplePaginate()` is new: it reads one row past the page instead of counting
+the table, and has no `total()` or `lastPage()` at all. `paginate(0)` throws
+`InvalidArgumentException` rather than dividing by zero.
+
+**Migrations are written as a chain.** `createTable()` and `changeTable()` no
+longer take a closure.
+
+```php
+// 4.x
+$migration->createTable(function (Migration $table) {
+    $table->create('id');
+    $table->create('title');
+});
+
+// 5.0
+$migration
+    ->create('id')
+    ->create('title')
+    ->createTable();
+```
+
+Changes collected before one call are still applied in a single pass over the
+file. The migration takes a model: `new Migration(new Article())`.
+
+**A broken cast is an error.** A column cast to `array` or `object` that does
+not hold json used to read back as `null`; it now throws
+`UnexpectedValueException`, as does a value that cannot be written as json.
+
+**`Collection` lost `key()`, `next()` and `current()`.** It is walked with
+`foreach` and cut with `slice()`, `filter()`, `pluck()` and `keyBy()`.
+
+**The csv escape character is gone.** Files are written to RFC 4180: a quote
+inside a value is doubled, nothing is escaped with a backslash. A table written
+by 4.x whose values end in a backslash may read differently — check such tables
+before upgrading. Any other csv parser reads these files as they are.
+
+### Added
+
+- `cursor()` — walks the rows one at a time, holding one record at a time
+  instead of the whole result.
+- `simplePaginate()` — a page without counting the table.
+- `whereLike()` and its family.
+- `constrain()` on a relation — narrows what an eager load reads.
+- `Record::toArray()`, `Record::fresh()`, `Record::relationLoaded()`.
+- `Collection::keyBy()`, and `search()`/`contains()` now take a closure as well
+  as a value. `pluck()`, `slice()` and `filter()` return collections.
+- `Pagination::onEachSide()`, `setPageName()`, `withPath()`, `appends()`, and
+  `links()` renders through a template of your own when given one.
+
+### Fixed
+
+- A relation read from a record kept the result the record came from, not
+  whatever its query read last.
+- Writing a table is atomic: rows go to a sibling file that replaces the table
+  in one step, so a reader never sees a half written table and a failed write
+  leaves the original alone.
+- A write takes a lock, and a lock taken on a file that was replaced meanwhile
+  is taken again.
+- `count()` with a condition counted the first row of the table twice.
+- A read started while another one was going on cut the first one short.
+- `limit(0)` returned nothing instead of throwing `OutOfBoundsException`.
+
+### Performance
+
+Measured on a table of 50 000 rows, against the same work written with `fopen`
+and `fgetcsv` (`composer compare`):
+
+- A sorted page (`orderByDesc('id')->limit(10)`) holds the rows of the page
+  instead of the table: 0.6 MB against 33 MB, and faster than raw php.
+- Reading a whole table with `cursor()` holds one record at a time.
+- Inserting a row no longer collects the keys of the table, updating and
+  deleting no longer read the file twice.
+
+## 4.2.2 and earlier
+
+See the commit history.
