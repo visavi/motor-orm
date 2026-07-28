@@ -2,28 +2,10 @@
 
 namespace MotorORM\Tests;
 
-use MotorORM\Collection;
-use MotorORM\Conditions;
 use MotorORM\Model;
-use MotorORM\Query;
-use MotorORM\Record;
-use MotorORM\RecordMapper;
-use MotorORM\SortOrder;
-use MotorORM\Sorter;
-use MotorORM\Table;
 use MotorORM\Tests\Models\Bulk;
-use PHPUnit\Framework\Attributes\CoversClass;
 use SplFileObject;
 
-#[CoversClass(Query::class)]
-#[CoversClass(Model::class)]
-#[CoversClass(Table::class)]
-#[CoversClass(Sorter::class)]
-#[CoversClass(SortOrder::class)]
-#[CoversClass(Conditions::class)]
-#[CoversClass(RecordMapper::class)]
-#[CoversClass(Record::class)]
-#[CoversClass(Collection::class)]
 final class SortingTest extends TestCase
 {
     /** Rows of the table the memory cases are read from */

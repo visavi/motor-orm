@@ -5,3 +5,4 @@
 *.csv.tmp
 composer.lock
 /tests/data/bulk.csv
+/tests/data/measures.csv

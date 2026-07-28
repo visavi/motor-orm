@@ -3,18 +3,11 @@
 namespace MotorORM\Tests;
 
 use InvalidArgumentException;
-use MotorORM\Collection;
 use MotorORM\Page;
-use MotorORM\PagedCollection;
 use MotorORM\Pagination;
 use MotorORM\Tests\Models\Article;
-use PHPUnit\Framework\Attributes\CoversClass;
 use RuntimeException;
 
-#[CoversClass(Pagination::class)]
-#[CoversClass(PagedCollection::class)]
-#[CoversClass(Page::class)]
-#[CoversClass(Collection::class)]
 final class PaginationTest extends TestCase
 {
     /**

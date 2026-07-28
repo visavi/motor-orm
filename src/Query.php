@@ -355,7 +355,8 @@ final class Query
      */
     public function first(): ?Record
     {
-        $iterator = new LimitIterator($this->pipeline(1), 0, 1);
+        /* The first row of the read, and a read may be told where it starts */
+        $iterator = new LimitIterator($this->pipeline($this->offset + 1), $this->offset, 1);
         $iterator->rewind();
 
         /* Reading the first match is enough, counting the whole table is not */

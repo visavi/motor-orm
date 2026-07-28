@@ -4,12 +4,7 @@ namespace MotorORM\Tests;
 
 use BadMethodCallException;
 use InvalidArgumentException;
-use MotorORM\Collection;
-use MotorORM\Conditions;
-use MotorORM\Model;
 use MotorORM\Query;
-use MotorORM\Record;
-use MotorORM\RecordMapper;
 use MotorORM\Table;
 use MotorORM\Tests\Models\Article;
 use MotorORM\Tests\Models\CastedEvent;
@@ -18,16 +13,8 @@ use MotorORM\Tests\Models\Payload;
 use MotorORM\Tests\Models\Setting;
 use MotorORM\Tests\Models\StringKeyEvent;
 use MotorORM\Tests\Models\TagStory;
-use PHPUnit\Framework\Attributes\CoversClass;
 use UnexpectedValueException;
 
-#[CoversClass(Query::class)]
-#[CoversClass(Model::class)]
-#[CoversClass(Table::class)]
-#[CoversClass(Conditions::class)]
-#[CoversClass(RecordMapper::class)]
-#[CoversClass(Record::class)]
-#[CoversClass(Collection::class)]
 final class QueryTest extends TestCase
 {
     /**
@@ -159,6 +146,41 @@ final class QueryTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         Article::query()->where('title', 'lke', 'Заголовок1');
+    }
+
+    /**
+     * Comparison holds at the edge as well as past it
+     *
+     */
+    public function testGreaterOrEqualAndLessOrEqual(): void
+    {
+        $this->assertCount(2, Article::query()->where('id', '>=', 19)->get());
+        $this->assertCount(1, Article::query()->where('id', '>', 19)->get());
+        $this->assertCount(2, Article::query()->where('id', '<=', 2)->get());
+        $this->assertCount(1, Article::query()->where('id', '<', 2)->get());
+    }
+
+    /**
+     * Both spellings of "not equal" mean the same
+     *
+     */
+    public function testNotEqual(): void
+    {
+        $this->assertCount(17, Article::query()->where('name', '!=', 'Миша')->get());
+        $this->assertCount(17, Article::query()->where('name', '<>', 'Миша')->get());
+        $this->assertCount(19, Article::query()->where('id', '!=', 1)->get());
+    }
+
+    /**
+     * Asking twice for the same limit changes nothing
+     *
+     */
+    public function testLimitSetTwice(): void
+    {
+        $query = Article::query()->limit(3)->limit(3)->offset(1)->offset(1);
+
+        $this->assertCount(3, $query->get());
+        $this->assertEquals(2, $query->first()->id);
     }
 
     /**

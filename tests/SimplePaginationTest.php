@@ -2,19 +2,12 @@
 
 namespace MotorORM\Tests;
 
-use MotorORM\Collection;
 use MotorORM\Page;
-use MotorORM\PagedCollection;
 use MotorORM\Record;
 use MotorORM\SimplePagination;
 use MotorORM\Tests\Models\Article;
 use MotorORM\Tests\Models\Story;
-use PHPUnit\Framework\Attributes\CoversClass;
 
-#[CoversClass(SimplePagination::class)]
-#[CoversClass(PagedCollection::class)]
-#[CoversClass(Page::class)]
-#[CoversClass(Collection::class)]
 final class SimplePaginationTest extends TestCase
 {
     /**

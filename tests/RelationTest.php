@@ -4,28 +4,12 @@ namespace MotorORM\Tests;
 
 use InvalidArgumentException;
 use MotorORM\Collection;
-use MotorORM\Model;
-use MotorORM\Query;
-use MotorORM\Record;
-use MotorORM\RecordMapper;
 use MotorORM\Relation;
-use MotorORM\RelationLoader;
 use MotorORM\RelationType;
-use MotorORM\Table;
 use MotorORM\Tests\Models\Story;
 use MotorORM\Tests\Models\User;
-use PHPUnit\Framework\Attributes\CoversClass;
 use RuntimeException;
 
-#[CoversClass(Query::class)]
-#[CoversClass(Model::class)]
-#[CoversClass(Table::class)]
-#[CoversClass(Relation::class)]
-#[CoversClass(RelationLoader::class)]
-#[CoversClass(RelationType::class)]
-#[CoversClass(RecordMapper::class)]
-#[CoversClass(Record::class)]
-#[CoversClass(Collection::class)]
 final class RelationTest extends TestCase
 {
     /**
@@ -345,5 +329,19 @@ final class RelationTest extends TestCase
         $this->expectException(RuntimeException::class);
 
         Story::query()->with('undefined')->get();
+    }
+    /**
+     * A method the model inherits is no relation, whatever it returns
+     *
+     * Reading a property must never run something that only looks like a
+     * relation from the outside
+     */
+    public function testInheritedMethodIsNoRelation(): void
+    {
+        $model = Story::query()->model();
+
+        $this->assertFalse($model->isRelation('getTable'));
+        $this->assertFalse($model->isRelation('nothingOfTheSort'));
+        $this->assertTrue($model->isRelation('comments'));
     }
 }

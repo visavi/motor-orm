@@ -4,9 +4,7 @@ namespace MotorORM\Tests;
 
 use MotorORM\Collection;
 use MotorORM\Tests\Models\Article;
-use PHPUnit\Framework\Attributes\CoversClass;
 
-#[CoversClass(Collection::class)]
 final class CollectionTest extends TestCase
 {
     /**
@@ -295,5 +293,15 @@ final class CollectionTest extends TestCase
 
         $collection->clear();
         $this->assertTrue($collection->isEmpty());
+    }
+
+    /**
+     * Printing a collection says what it is, not what it holds
+     */
+    public function testToString(): void
+    {
+        $collection = new Collection(['a', 'b']);
+
+        $this->assertStringStartsWith(Collection::class . '@', (string) $collection);
     }
 }

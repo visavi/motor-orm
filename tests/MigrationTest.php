@@ -3,18 +3,10 @@
 namespace MotorORM\Tests;
 
 use MotorORM\Migration;
-use MotorORM\Model;
-use MotorORM\Query;
-use MotorORM\Table;
 use MotorORM\Tests\Models\Scratch;
 use MotorORM\Tests\Models\Structure;
-use PHPUnit\Framework\Attributes\CoversClass;
 use UnexpectedValueException;
 
-#[CoversClass(Migration::class)]
-#[CoversClass(Model::class)]
-#[CoversClass(Table::class)]
-#[CoversClass(Query::class)]
 final class MigrationTest extends TestCase
 {
     /**
@@ -149,6 +141,61 @@ final class MigrationTest extends TestCase
             ->changeTable();
 
         $this->assertSame(['column1', 'column2', 'column3'], Structure::query()->headers());
+    }
+
+    /**
+     * A column that is already there is not created twice
+     */
+    public function testCreateExistingColumn(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('adding an existing column');
+
+        new Migration(new Structure())->create('column1');
+    }
+
+    /**
+     * A column that is not there is renamed nowhere
+     */
+    public function testRenameMissingColumn(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('renaming undefined column');
+
+        new Migration(new Structure())->rename('column9', 'column10');
+    }
+
+    /**
+     * A name that is taken is not given to a second column
+     */
+    public function testRenameToExistingColumn(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('renaming an existing column');
+
+        new Migration(new Structure())->rename('column1', 'column2');
+    }
+
+    /**
+     * A column that is not there is not deleted
+     */
+    public function testDeleteMissingColumn(): void
+    {
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('deleting undefined column');
+
+        new Migration(new Structure())->delete('column9');
+    }
+
+    /**
+     * Nothing asked for is nothing to do, and the table is left alone
+     */
+    public function testChangeTableWithoutChanges(): void
+    {
+        $before = file_get_contents(new Structure()->getPath());
+
+        $this->assertTrue(new Migration(new Structure())->changeTable());
+        $this->assertSame($before, file_get_contents(new Structure()->getPath()));
     }
 
     /**
