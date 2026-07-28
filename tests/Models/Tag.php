@@ -2,7 +2,8 @@
 
 namespace MotorORM\Tests\Models;
 
-use MotorORM\Builder;
+use MotorORM\Model;
+use MotorORM\Query;
 
 /**
  * Class Tag
@@ -10,7 +11,7 @@ use MotorORM\Builder;
  * @property int $id
  * @property string $name
  */
-class Tag extends Builder
+class Tag extends Model
 {
     public string $table = __DIR__ . '/../../tests/data/tags.csv';
 }

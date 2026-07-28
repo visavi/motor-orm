@@ -2,25 +2,27 @@
 
 namespace MotorORM\Tests\Models;
 
-use MotorORM\Builder;
+use MotorORM\Model;
+use MotorORM\Query;
+use MotorORM\Relation;
 
 /**
  * Class Story
  *
  * @property int $id
- * @property int $user_id
+ * @property string $user_id
  * @property string $title
  */
-class Story extends Builder
+class Story extends Model
 {
     public string $table = __DIR__ . '/../../tests/data/stories.csv';
 
     /**
      * User relation
      *
-     * @return Builder
+     * @return Relation
      */
-    public function user(): Builder
+    public function user(): Relation
     {
         return $this->hasOne(User::class, 'id', 'user_id');
     }
@@ -28,9 +30,9 @@ class Story extends Builder
     /**
      * Comments relation
      *
-     * @return Builder
+     * @return Relation
      */
-    public function comments(): Builder
+    public function comments(): Relation
     {
         return $this->hasMany(Comment::class);
     }
@@ -38,9 +40,9 @@ class Story extends Builder
     /**
      * Tags relation
      *
-     * @return Builder
+     * @return Relation
      */
-    public function tags(): Builder
+    public function tags(): Relation
     {
         return $this->hasManyThrough(Tag::class, TagStory::class);
     }

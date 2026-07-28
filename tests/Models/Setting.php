@@ -2,7 +2,8 @@
 
 namespace MotorORM\Tests\Models;
 
-use MotorORM\Builder;
+use MotorORM\Model;
+use MotorORM\Query;
 
 /**
  * Table with a string primary key
@@ -10,14 +11,7 @@ use MotorORM\Builder;
  * @property string $key
  * @property string $value
  */
-class Setting extends Builder
+class Setting extends Model
 {
     public string $table = __DIR__ . '/../../tests/data/settings.csv';
-
-    /**
-     * The attributes that should be cast.
-     */
-    protected array $casts = [
-        'key' => 'string',
-    ];
 }

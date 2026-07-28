@@ -15,7 +15,7 @@ declare(strict_types=1);
 
 use MotorORM\Benchmarks\Models\Bench;
 use MotorORM\Benchmarks\Models\BenchWrite;
-use MotorORM\Builder;
+use MotorORM\Query;
 
 require __DIR__ . '/../vendor/autoload.php';
 
@@ -53,6 +53,7 @@ $readCases = [
     'where + limit 10'            => static fn () => count(Bench::query()->where('name', 'Имя7')->limit(10)->get()) . ' зап.',
     'where -> get()'              => static fn () => count(Bench::query()->where('name', 'Имя7')->get()) . ' зап.',
     'get() всей таблицы'          => static fn () => count(Bench::query()->get()) . ' зап.',
+    'cursor() всей таблицы'        => static function () { $n = 0; foreach (Bench::query()->cursor() as $r) { $n++; } return $n . ' зап.'; },
     'orderByDesc + limit 10'      => static fn () => count(Bench::query()->orderByDesc('id')->limit(10)->get()) . ' зап.',
     'orderBy двойная сортировка'  => static fn () => count(Bench::query()->orderBy('time')->orderByDesc('id')->limit(10)->get()) . ' зап.',
     'paginate(10)'                => static fn () => count(Bench::query()->paginate(10)) . ' зап.',
@@ -65,7 +66,7 @@ $readCases = [
         ->count() . ' зап.',
     'группа условий (замыкание)'  => static fn () => Bench::query()
         ->where('name', 'Имя7')
-        ->where(static function (Builder $query) {
+        ->where(static function (Query $query) {
             $query->where('id', 7)->orWhere('id', 107);
         })
         ->count() . ' зап.',

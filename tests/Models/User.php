@@ -2,7 +2,9 @@
 
 namespace MotorORM\Tests\Models;
 
-use MotorORM\Builder;
+use MotorORM\Model;
+use MotorORM\Query;
+use MotorORM\Relation;
 
 /**
  * Class User
@@ -10,16 +12,16 @@ use MotorORM\Builder;
  * @property int $id
  * @property string $login
  */
-class User extends Builder
+class User extends Model
 {
     public string $table = __DIR__ . '/../../tests/data/users.csv';
 
     /**
      * Stories relation
      *
-     * @return Builder
+     * @return Relation
      */
-    public function stories(): Builder
+    public function stories(): Relation
     {
         return $this->hasMany(Story::class);
     }

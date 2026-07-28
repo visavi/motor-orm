@@ -2,7 +2,8 @@
 
 namespace MotorORM\Tests\Models;
 
-use MotorORM\Builder;
+use MotorORM\Model;
+use MotorORM\Query;
 
 /**
  * Writable table, the CRUD tests empty it before every case
@@ -11,7 +12,7 @@ use MotorORM\Builder;
  * @property string $name
  * @property string $value
  */
-class Item extends Builder
+class Item extends Model
 {
     public string $table = __DIR__ . '/../../tests/data/items.csv';
 }

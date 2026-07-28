@@ -6,7 +6,6 @@ namespace MotorORM;
 
 use Closure;
 use SplFileObject;
-use SplTempFileObject;
 use UnexpectedValueException;
 
 /**
@@ -17,19 +16,19 @@ class Migration
     protected array $columns = [];
     protected ?SplFileObject $file = null;
 
-    public function __construct(public Builder $builder)
+    public function __construct(public Model $model)
     {
     }
 
     /**
-     * Open the table on first use. Opening creates the file, so asking
-     * whether a table exists must not go through here.
+     * Open the table on first use, which requires it to exist. Creating
+     * one goes through createTable().
      *
      * @return SplFileObject
      */
     protected function file(): SplFileObject
     {
-        return $this->file ??= $this->builder->open()->file();
+        return $this->file ??= $this->model->file();
     }
 
     /**
@@ -176,7 +175,7 @@ class Migration
     {
         if ($this->hasTable()) {
             throw new UnexpectedValueException(
-                sprintf('%s() creating table. Table "%s" already exists', __METHOD__, $this->builder->getTable())
+                sprintf('%s() creating table. Table "%s" already exists', __METHOD__, $this->model->getTable())
             );
         }
 
@@ -184,8 +183,8 @@ class Migration
 
         $columns = array_column($this->columns, 'name');
 
-        $file = $this->file();
-        chmod($this->builder->getPath(), 0666);
+        $file = $this->file = $this->model->createFile();
+        chmod($this->model->getPath(), 0666);
 
         $file->fputcsv($columns);
         $this->columns = [];
@@ -202,11 +201,11 @@ class Migration
     {
         if (! $this->hasTable()) {
             throw new UnexpectedValueException(
-                sprintf('%s() deleting table. Table "%s" does not exist', __METHOD__, $this->builder->getTable())
+                sprintf('%s() deleting table. Table "%s" does not exist', __METHOD__, $this->model->getTable())
             );
         }
 
-        unlink($this->builder->getPath());
+        unlink($this->model->getPath());
         $this->file = null;
 
         return true;
@@ -304,7 +303,7 @@ class Migration
      */
     public function hasTable(): bool
     {
-        $path = $this->builder->getPath();
+        $path = $this->model->getPath();
 
         return is_file($path) && filesize($path) > 0;
     }
@@ -316,9 +315,13 @@ class Migration
      */
     private function headers(): array
     {
+        if (! $this->hasTable()) {
+            return [];
+        }
+
         $this->file();
 
-        return $this->builder->headers();
+        return $this->model::query()->headers();
     }
 
     /**
@@ -330,43 +333,14 @@ class Migration
      */
     private function process(Closure $closure): void
     {
-        $file = $this->file();
+        $this->model::query()->rewrite(static function (array &$current, SplFileObject $target, SplFileObject $source) use ($closure) {
+            $closure($source, $current);
 
-        if (! $file->flock(LOCK_EX)) {
-            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $file->getFilename()));
-        }
+            $target->fputcsv($current);
+        });
 
-        try {
-            $file->fseek(0);
-
-            /* Default memory budget, larger tables spill to a temporary file */
-            $temp = new SplTempFileObject();
-            $temp->setCsvControl(...Builder::CSV_CONTROL);
-            $temp->setFlags(
-                SplFileObject::READ_AHEAD |
-                SplFileObject::SKIP_EMPTY |
-                SplFileObject::READ_CSV
-            );
-
-            while(! $file->eof()) {
-                $temp->fwrite($file->fread(4096));
-            }
-
-            $temp->rewind();
-            $file->ftruncate(0);
-            $file->fseek(0);
-
-            while ($temp->valid()) {
-                $current = $temp->current();
-
-                $closure($temp, $current);
-
-                $file->fputcsv($current);
-                $temp->next();
-            }
-        } finally {
-            $file->flock(LOCK_UN);
-        }
+        /* The table file was replaced, the handle we were holding is stale */
+        $this->file = null;
     }
 
     /**

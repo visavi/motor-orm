@@ -8,7 +8,7 @@
 
 ## Требования
 
-- PHP 8.0 и выше
+- PHP 8.5 и выше
 - `ext-mbstring`
 
 ## Установка
@@ -19,13 +19,20 @@ composer require visavi/motor-orm
 
 ## Быстрый старт
 
-Все запросы идут через модель, в которой указан путь к файлу с данными. В самих
-моделях могут быть объявлены приведения типов, scope и связи.
+Библиотека состоит из трёх вещей. **Модель** говорит, где лежат данные, что
+значат колонки и с чем связана таблица. **Запрос** её читает и пишет. **Запись**
+держит одну строку.
+
+```
+Article::query()   ->   Query   ->   Record
+   Model                                │
+     └── касты, scope, связи            └── значения, save, delete
+```
 
 ```php
-use MotorORM\Builder;
+use MotorORM\Model;
 
-class Article extends Builder
+class Article extends Model
 {
     public string $table = __DIR__ . '/data/articles.csv';
 }
@@ -35,13 +42,19 @@ $article = Article::query()->find(1);
 echo $article->title;
 ```
 
+Запрос к таблице, файла которой нет, бросает `UnexpectedValueException`, а не
+создаёт пустую. Таблицы создаются [миграциями](#миграции).
+
 Первый столбец файла считается уникальным ключом. Он может быть числовым или строковым.
 
 Числовой ключ генерируется при вставке автоматически. Строковый всегда передаётся
 явно — продолжать в нём нечего.
 
-Любая запись в файл, включая вставку, выполняется с блокировкой, чтобы
-одновременно пишущие процессы не затирали данные друг друга.
+Любая запись выполняется с блокировкой, чтобы одновременно пишущие процессы не
+затирали данные друг друга. Запись, меняющая существующие строки, собирает новую
+таблицу рядом со старой и подставляет её одним атомарным шагом, поэтому читающий
+никогда не видит недописанную таблицу, а прерванная запись оставляет исходную
+нетронутой.
 
 ## Содержание
 
@@ -50,6 +63,7 @@ echo $article->title;
 - [Частичный поиск (Like)](#частичный-поиск-like)
 - [Нестрогий поиск (Lax)](#нестрогий-поиск-lax)
 - [Сортировка, лимит и смещение](#сортировка-лимит-и-смещение)
+- [Обход большой таблицы](#обход-большой-таблицы)
 - [Запись](#запись)
 - [Приведение типов (Casts)](#приведение-типов-casts)
 - [Условия запросов (Scope)](#условия-запросов-scope)
@@ -86,8 +100,23 @@ Article::query()->headers();
 Article::query()->find(1)->toArray();
 ```
 
-`find()` и `first()` возвращают модель или `null`. `get()` всегда возвращает
-[коллекцию](#коллекции), пустую если ничего не нашлось.
+`find()` и `first()` возвращают `Record` или `null`. `get()` всегда возвращает
+[коллекцию](#коллекции) записей, пустую если ничего не нашлось.
+
+Запись держит значения одной строки и умеет записать себя обратно, но не несёт
+условий и сама запросов не выполняет:
+
+```php
+$article = Article::query()->find(1);
+
+$article->title;                    // колонка
+$article->title = 'Новый заголовок';  // изменено в памяти
+$article->save();                   // и записано обратно
+$article->update(['text' => 'Новый текст']);
+$article->delete();
+$article->fresh();                  // перечитать, отбросив несохранённое
+$article->toArray();
+```
 
 `exists()` и `first()` прекращают чтение на первом совпадении, поэтому на записи
 в начале файла стоят почти ничего.
@@ -114,7 +143,7 @@ Article::query()->whereNotIn('id', range(1, 10))->get();
 ```php
 Article::query()
     ->where('name', 'Миша')
-    ->where(function (Builder $query) {
+    ->where(function (Query $query) {
         $query->where('id', 10)->orWhere('id', 11);
     })
     ->get();
@@ -158,6 +187,7 @@ Article::query()->orderBy('created_at')->get();
 
 # По убыванию
 Article::query()->orderByDesc('created_at')->get();
+Article::query()->orderBy('created_at', SortOrder::Desc)->get();
 
 # Несколько колонок, в порядке добавления
 Article::query()
@@ -172,6 +202,23 @@ Article::query()->offset(10)->limit(10)->get();
 
 Сортировка держит подходящие строки в памяти, поэтому на большом файле сначала
 имеет смысл сузить выборку через `where()`.
+
+## Обход большой таблицы
+
+`get()` строит все подходящие записи и только потом их отдаёт. `cursor()` выдаёт
+их по одной, поэтому в памяти живёт только та, на которую сейчас смотрят:
+
+```php
+foreach (Article::query()->where('active', 1)->cursor() as $article) {
+    echo $article->title;
+}
+```
+
+На таблице в 50 000 строк это 0 МБ против 33 МБ у `get()`, при той же скорости.
+Ничего не накапливается, поэтому у курсора нет соседей, для которых можно
+загрузить связь пачкой: обращение к связи внутри цикла читает связанную таблицу
+на каждой записи, а `with()` не к чему привязаться. Если записи связанные —
+берите `get()`.
 
 ## Запись
 
@@ -205,25 +252,45 @@ Article::query()->truncate();
 
 ## Приведение типов (Casts)
 
-Все значения, прочитанные из файла, строковые, за исключением:
+Csv не хранит типов, поэтому все прочитанные из файла значения строковые, а пустое
+значение — `null`.
 
-- уникального ключа — `int`
-- колонок, заканчивающихся на `_id` и `_at` — `int`
-- пустых значений — `null`
+Исключение — первичный ключ: его генерирует сама ORM, поэтому он читается как
+`int`, если значение числовое. Нечисловой ключ остаётся строкой, так что таблице
+с ключом вида `theme` или `3f2a-9b` объявлять ничего не нужно.
 
-Для переопределения используйте свойство `casts`:
+Больше ничего не угадывается, и уж точно не по имени колонки: `created_at` со
+значением `2026-07-28 12:30:00` останется этой строкой, `uuid_id` со значением
+`3f2a-9b` — этой.
+
+Единственное место, которое знает смысл остальных колонок, — модель, поэтому типы
+задаются явно в свойстве `casts`:
 
 ```php
-class Story extends Builder
+class Story extends Model
 {
     protected array $casts = [
-        'rating' => 'int',
-        'reads'  => 'int',
-        'locked' => 'bool',
-        'meta'   => 'array',
+        'user_id'    => 'int',
+        'created_at' => 'int',
+        'rating'     => 'int',
+        'locked'     => 'bool',
+        'meta'       => 'array',
     ];
 }
 ```
+
+Объявление первичного ключа перекрывает то, что он получил бы сам, поэтому
+числовой ключ можно оставить строкой:
+
+```php
+protected array $casts = [
+    'id' => 'string',
+];
+```
+
+Условия и сортировка работают с сырыми значениями файла, поэтому приведение меняет
+только то, что вы читаете, и больше ничего. `where('id', 1)` и `orderBy('id')`
+ведут себя одинаково независимо от того, объявлен `id` в `casts` или нет.
 
 Поддерживаемые типы:
 
@@ -242,9 +309,9 @@ Scope — это обычный метод с префиксом `scope`. Име
 что перед ней scope. Внутрь передаётся запрос, на который можно навесить условия:
 
 ```php
-class Story extends Builder
+class Story extends Model
 {
-    public function scopeActive(Builder $query): Builder
+    public function scopeActive(Query $query): Query
     {
         return $query->where('active', true);
     }
@@ -256,9 +323,9 @@ Story::query()->active()->paginate($perPage);
 Параметры, объявленные после `$query`, заполняются из вызова:
 
 ```php
-class Story extends Builder
+class Story extends Model
 {
-    public function scopeOfType(Builder $query, string $type): Builder
+    public function scopeOfType(Query $query, string $type): Query
     {
         return $query->where('type', $type);
     }
@@ -274,7 +341,7 @@ Story::query()->ofType('new')->paginate($perPage);
 
 ```php
 $stories = Story::query()
-    ->when($active, function (Builder $query, $active) {
+    ->when($active, function (Query $query, $active) {
         $query->where('active', $active);
     })
     ->get();
@@ -286,8 +353,8 @@ $stories = Story::query()
 $stories = Story::query()
     ->when(
         $sortByVotes,
-        fn (Builder $query) => $query->orderBy('votes'),
-        fn (Builder $query) => $query->orderBy('name'),
+        fn (Query $query) => $query->orderBy('votes'),
+        fn (Query $query) => $query->orderBy('name'),
     )
     ->get();
 ```
@@ -303,18 +370,18 @@ $stories = Story::query()
 
 ```php
 # Прямая связь
-class User extends Builder
+class User extends Model
 {
-    public function story(): Builder
+    public function story(): Relation
     {
         return $this->hasOne(Story::class);
     }
 }
 
 # Обратная связь
-class Story extends Builder
+class Story extends Model
 {
-    public function user(): Builder
+    public function user(): Relation
     {
         return $this->hasOne(User::class, 'id', 'user_id');
     }
@@ -329,9 +396,9 @@ class Story extends Builder
 Принимает имя класса, внешний и внутренний ключ.
 
 ```php
-class Story extends Builder
+class Story extends Model
 {
-    public function comments(): Builder
+    public function comments(): Relation
     {
         return $this->hasMany(Comment::class);
     }
@@ -343,9 +410,9 @@ class Story extends Builder
 Принимает конечный класс, промежуточный класс и, по желанию, обе пары ключей.
 
 ```php
-class Story extends Builder
+class Story extends Model
 {
-    public function tags(): Builder
+    public function tags(): Relation
     {
         return $this->hasManyThrough(Tag::class, TagStory::class);
     }
@@ -440,7 +507,10 @@ $articles->clear();
 ```
 
 `pluck()`, `keyBy()`, `filter()` и `slice()` возвращают новую коллекцию и не
-трогают исходную.
+трогают исходную — в отличие от `put()`, `push()`, `pull()`, `forget()` и
+`clear()`, которые меняют ту, на которой вызваны. Выбросить результат чистого
+метода почти всегда ошибка, поэтому они помечены `#[\NoDiscard]`, и PHP об этом
+предупредит.
 
 `keyBy()` принимает и замыкание, при повторе ключа оставляет последний элемент,
 а элементы без такой колонки выбрасывает:

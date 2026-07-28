@@ -8,12 +8,17 @@ use MotorORM\Tests\Models\Article;
 use MotorORM\Tests\Models\Setting;
 use MotorORM\Tests\Models\Item;
 use MotorORM\Tests\Models\Reserved;
-use MotorORM\Builder;
+use MotorORM\Tests\Models\Scratch;
+use MotorORM\Tests\Models\Story;
+use MotorORM\Query;
+use MotorORM\SortOrder;
 use PHPUnit\Framework\Attributes\CoversClass;
+use RuntimeException;
+use SplFileObject;
 use UnexpectedValueException;
 
-#[CoversClass(Builder::class)]
-final class BuilderTest extends TestCase
+#[CoversClass(Query::class)]
+final class QueryBuilderTest extends TestCase
 {
     /**
      * Item is a writable fixture, every test starts with it empty
@@ -21,6 +26,116 @@ final class BuilderTest extends TestCase
     protected function setUp(): void
     {
         Item::query()->truncate();
+    }
+
+    /**
+     * Reading a property named like a method must not run that method
+     */
+    public function testReadingAMethodNameDoesNotRunIt(): void
+    {
+        Item::query()->create(['name' => 'one', 'value' => 'first']);
+        Item::query()->create(['name' => 'two', 'value' => 'second']);
+
+        $item = Item::query()->find(1);
+
+        $this->assertNull($item->delete);
+        $this->assertNull($item->truncate);
+        $this->assertNull($item->headers);
+        $this->assertCount(2, Item::query()->get());
+    }
+
+    /**
+     * A relation declared on the model still resolves
+     */
+    public function testRelationStillResolves(): void
+    {
+        $this->assertEquals('admin', Story::query()->find(1)->user->login);
+    }
+
+    /**
+     * Querying a table that does not exist is an error
+     */
+    public function testQueryingAMissingTable(): void
+    {
+        @unlink((new Scratch())->getPath());
+
+        $this->expectException(UnexpectedValueException::class);
+        $this->expectExceptionMessage('does not exist');
+
+        Scratch::query();
+    }
+
+    /**
+     * Querying a table that does not exist must not create it
+     */
+    public function testQueryingAMissingTableDoesNotCreateIt(): void
+    {
+        $path = (new Scratch())->getPath();
+        @unlink($path);
+
+        try {
+            Scratch::query()->count();
+        } catch (UnexpectedValueException) {
+            // the table is missing, that is the point of the test
+        }
+
+        $this->assertFileDoesNotExist($path);
+    }
+
+    /**
+     * A write that fails halfway through leaves the table as it was
+     */
+    public function testFailedWriteLeavesTheTableIntact(): void
+    {
+        Item::query()->create(['name' => 'one', 'value' => 'a']);
+        Item::query()->create(['name' => 'two', 'value' => 'b']);
+
+        $path   = (new Item())->getPath();
+        $before = file_get_contents($path);
+
+        $written = 0;
+
+        try {
+            Item::query()->rewrite(function (array $current, SplFileObject $target) use (&$written) {
+                $target->fputcsv($current);
+
+                /* Two rows are in the new file already when this blows up */
+                if (++$written > 1) {
+                    throw new RuntimeException('the write broke halfway through');
+                }
+            });
+            $this->fail('the write was expected to fail');
+        } catch (RuntimeException) {
+            // that is the point of the test
+        }
+
+        $this->assertSame($before, file_get_contents($path));
+        $this->assertCount(2, Item::query()->get());
+    }
+
+    /**
+     * Walking the table one record at a time
+     */
+    public function testCursor(): void
+    {
+        foreach ($this->data() as $val) {
+            Item::query()->create($val);
+        }
+
+        $names = [];
+        foreach (Item::query()->where('id', '>', 3)->orderByDesc('id')->limit(2)->cursor() as $item) {
+            $names[] = $item->name;
+        }
+
+        $this->assertSame(['name6', 'name5'], $names);
+    }
+
+    /**
+     * The cursor yields nothing when nothing matches
+     */
+    public function testCursorEmpty(): void
+    {
+        $this->assertSame([], iterator_to_array(Item::query()->cursor()));
     }
 
     /**
@@ -331,7 +446,7 @@ final class BuilderTest extends TestCase
      */
     public function testDoubleSort(): void
     {
-        $find = Article::query()->where('name', 'Миша')->orderBy('time', 'desc')->orderByDesc('id')->limit(3)->get();
+        $find = Article::query()->where('name', 'Миша')->orderBy('time', SortOrder::Desc)->orderByDesc('id')->limit(3)->get();
 
         $this->assertCount(3, $find);
         $this->assertEquals(18, $find[0]->id);

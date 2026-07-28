@@ -2,16 +2,17 @@
 
 namespace MotorORM\Tests\Models;
 
-use MotorORM\Builder;
+use MotorORM\Model;
+use MotorORM\Query;
 
 /**
  * Class Comment
  *
  * @property int $id
- * @property int $story_id
+ * @property string $story_id
  * @property string $text
  */
-class Comment extends Builder
+class Comment extends Model
 {
     public string $table = __DIR__ . '/../../tests/data/comments.csv';
 }

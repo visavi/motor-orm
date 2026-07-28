@@ -8,7 +8,7 @@ The data format is CSV compatible, with a few deviations that make reading faste
 
 ## Requirements
 
-- PHP 8.0 or newer
+- PHP 8.5 or newer
 - `ext-mbstring`
 
 ## Installation
@@ -19,13 +19,20 @@ composer require visavi/motor-orm
 
 ## Quick start
 
-Every query goes through a model that points at a data file. Models may carry extra
-methods of their own — casts, scopes and relations.
+The library is three things. A **model** says where the data lives, what the
+columns mean and what the table is related to. A **query** reads and writes it. A
+**record** holds one row.
+
+```
+Article::query()   ->   Query   ->   Record
+   Model                                │
+     └── casts, scopes, relations       └── values, save, delete
+```
 
 ```php
-use MotorORM\Builder;
+use MotorORM\Model;
 
-class Article extends Builder
+class Article extends Model
 {
     public string $table = __DIR__ . '/data/articles.csv';
 }
@@ -35,13 +42,19 @@ $article = Article::query()->find(1);
 echo $article->title;
 ```
 
+Querying a table whose file is not there throws an `UnexpectedValueException`
+rather than bringing an empty one into being. Tables are created by
+[migrations](#migrations).
+
 The first column of a file is the primary key. It may be numeric or a string.
 
 A numeric key is generated automatically on insert. A string key must always be
 passed explicitly, there is nothing to continue from.
 
-Every write, including inserts, locks the file, so that concurrent writers cannot
-lose each other's data.
+Every write locks the file, so that concurrent writers cannot lose each other's
+data. A write that changes existing rows builds the new table beside the old one
+and puts it in place in a single atomic step, so a reader never sees a half
+written table and an interrupted write leaves the original untouched.
 
 ## Contents
 
@@ -50,6 +63,7 @@ lose each other's data.
 - [Partial match (Like)](#partial-match-like)
 - [Loose match (Lax)](#loose-match-lax)
 - [Sorting, limit and offset](#sorting-limit-and-offset)
+- [Walking a large table](#walking-a-large-table)
 - [Writing](#writing)
 - [Casts](#casts)
 - [Scopes](#scopes)
@@ -86,8 +100,23 @@ Article::query()->headers();
 Article::query()->find(1)->toArray();
 ```
 
-`find()` and `first()` return the model or `null`. `get()` always returns a
-[Collection](#collection), empty if nothing matched.
+`find()` and `first()` return a `Record` or `null`. `get()` always returns a
+[Collection](#collection) of records, empty if nothing matched.
+
+A record holds the values of one row and knows how to write itself back, but it
+carries no conditions and runs no queries of its own:
+
+```php
+$article = Article::query()->find(1);
+
+$article->title;                 // a column
+$article->title = 'New title';   // changed in memory
+$article->save();                // and written back
+$article->update(['text' => 'New text']);
+$article->delete();
+$article->fresh();               // read again, dropping the unsaved changes
+$article->toArray();
+```
 
 `exists()` and `first()` stop reading at the first match, so they cost almost
 nothing on a record near the top of the file.
@@ -114,7 +143,7 @@ A closure groups conditions, and groups may be nested:
 ```php
 Article::query()
     ->where('name', 'Misha')
-    ->where(function (Builder $query) {
+    ->where(function (Query $query) {
         $query->where('id', 10)->orWhere('id', 11);
     })
     ->get();
@@ -158,6 +187,7 @@ Article::query()->orderBy('created_at')->get();
 
 # Descending
 Article::query()->orderByDesc('created_at')->get();
+Article::query()->orderBy('created_at', SortOrder::Desc)->get();
 
 # Several columns, applied in the order they were added
 Article::query()
@@ -172,6 +202,22 @@ Article::query()->offset(10)->limit(10)->get();
 
 Sorting buffers the matching rows in memory, so prefer narrowing the query with
 `where()` before ordering a large file.
+
+## Walking a large table
+
+`get()` builds every matching record before handing them over. `cursor()` yields
+them one at a time, so only the record being looked at is held in memory:
+
+```php
+foreach (Article::query()->where('active', 1)->cursor() as $article) {
+    echo $article->title;
+}
+```
+
+On a table of 50 000 rows that is 0 MB against the 33 MB `get()` needs, at the
+same speed. Nothing is collected, so a cursor has no siblings to batch a relation
+for: touching one inside the loop reads the related table once per record, and
+`with()` has nothing to attach to. Use `get()` when the records are related.
 
 ## Writing
 
@@ -205,25 +251,45 @@ when a string key was omitted and cannot be generated.
 
 ## Casts
 
-Every value read from a file is a string, except for:
+A csv file carries no types, so every value read from it is a string, and an empty
+value is `null`.
 
-- the primary key — `int`
-- columns ending in `_id` and `_at` — `int`
-- empty values — `null`
+The primary key is the exception: the ORM generates it, so it reads it back as an
+`int` when the value is a number. A key that is not a number stays a string, which
+is why a table keyed by `theme` or `3f2a-9b` needs nothing declared.
 
-Declare the `casts` property to override this:
+Nothing else is guessed, least of all from a column name: a `created_at` holding
+`2026-07-28 12:30:00` is that string, and a `uuid_id` holding `3f2a-9b` is that
+string.
+
+The model is the only place that knows what any other column means, so spell it
+out in the `casts` property:
 
 ```php
-class Story extends Builder
+class Story extends Model
 {
     protected array $casts = [
-        'rating' => 'int',
-        'reads'  => 'int',
-        'locked' => 'bool',
-        'meta'   => 'array',
+        'user_id'    => 'int',
+        'created_at' => 'int',
+        'rating'     => 'int',
+        'locked'     => 'bool',
+        'meta'       => 'array',
     ];
 }
 ```
+
+Declaring the primary key overrides what it would get, so a numeric key can be
+kept as a string:
+
+```php
+protected array $casts = [
+    'id' => 'string',
+];
+```
+
+Conditions and sorting work on the raw values of the file, so a cast changes what
+you read back and nothing else. `where('id', 1)` and `orderBy('id')` behave the
+same whether or not `id` is declared.
 
 Supported types:
 
@@ -242,9 +308,9 @@ A scope is a method prefixed with `scope`. The prefix is how the ORM tells it ap
 from an ordinary method. The query is passed in, ready for more conditions:
 
 ```php
-class Story extends Builder
+class Story extends Model
 {
-    public function scopeActive(Builder $query): Builder
+    public function scopeActive(Query $query): Query
     {
         return $query->where('active', true);
     }
@@ -256,9 +322,9 @@ Story::query()->active()->paginate($perPage);
 Parameters declared after `$query` are filled from the call:
 
 ```php
-class Story extends Builder
+class Story extends Model
 {
-    public function scopeOfType(Builder $query, string $type): Builder
+    public function scopeOfType(Query $query, string $type): Query
     {
         return $query->where('type', $type);
     }
@@ -274,7 +340,7 @@ optional filters out of `if` blocks:
 
 ```php
 $stories = Story::query()
-    ->when($active, function (Builder $query, $active) {
+    ->when($active, function (Query $query, $active) {
         $query->where('active', $active);
     })
     ->get();
@@ -286,8 +352,8 @@ A third argument runs when the value is falsy:
 $stories = Story::query()
     ->when(
         $sortByVotes,
-        fn (Builder $query) => $query->orderBy('votes'),
-        fn (Builder $query) => $query->orderBy('name'),
+        fn (Query $query) => $query->orderBy('votes'),
+        fn (Query $query) => $query->orderBy('name'),
     )
     ->get();
 ```
@@ -303,18 +369,18 @@ Takes a class name, a foreign key and a local key.
 
 ```php
 # Direct
-class User extends Builder
+class User extends Model
 {
-    public function story(): Builder
+    public function story(): Relation
     {
         return $this->hasOne(Story::class);
     }
 }
 
 # Inverse
-class Story extends Builder
+class Story extends Model
 {
-    public function user(): Builder
+    public function user(): Relation
     {
         return $this->hasOne(User::class, 'id', 'user_id');
     }
@@ -329,9 +395,9 @@ it is safe.
 Takes a class name, a foreign key and a local key.
 
 ```php
-class Story extends Builder
+class Story extends Model
 {
-    public function comments(): Builder
+    public function comments(): Relation
     {
         return $this->hasMany(Comment::class);
     }
@@ -343,9 +409,9 @@ class Story extends Builder
 Takes the target class, the intermediate class and, optionally, both pairs of keys.
 
 ```php
-class Story extends Builder
+class Story extends Model
 {
-    public function tags(): Builder
+    public function tags(): Relation
     {
         return $this->hasManyThrough(Tag::class, TagStory::class);
     }
@@ -439,7 +505,9 @@ $articles->clear();
 ```
 
 `pluck()`, `keyBy()`, `filter()` and `slice()` return a new collection and leave
-the original alone.
+the original alone, unlike `put()`, `push()`, `pull()`, `forget()` and `clear()`,
+which change the one they are called on. Dropping the result of a pure one is
+almost always a mistake, so those are marked `#[\NoDiscard]` and PHP says so.
 
 `keyBy()` also takes a closure, keeps the last item of a repeated key, and drops
 items that have no such column:

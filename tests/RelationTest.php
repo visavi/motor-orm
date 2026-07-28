@@ -5,11 +5,11 @@ namespace MotorORM\Tests;
 use MotorORM\Collection;
 use MotorORM\Tests\Models\Story;
 use MotorORM\Tests\Models\User;
-use MotorORM\Builder;
+use MotorORM\Query;
 use PHPUnit\Framework\Attributes\CoversClass;
 use RuntimeException;
 
-#[CoversClass(Builder::class)]
+#[CoversClass(Query::class)]
 final class RelationTest extends TestCase
 {
     /**
@@ -231,7 +231,7 @@ final class RelationTest extends TestCase
         $story = Story::query()->with('user')->find(2);
         $story->user_id = 2;
 
-        $this->assertEquals('admin', $story->first()->user->login);
+        $this->assertEquals('admin', $story->fresh()->user->login);
     }
 
     /**

@@ -10,7 +10,6 @@ namespace MotorORM;
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
- * @version 3.0
  */
 class Pagination
 {

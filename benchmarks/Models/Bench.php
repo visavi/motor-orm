@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace MotorORM\Benchmarks\Models;
 
-use MotorORM\Builder;
+use MotorORM\Model;
+use MotorORM\Query;
 
 /**
  * Class Bench
@@ -15,7 +16,7 @@ use MotorORM\Builder;
  * @property string $text
  * @property int $time
  */
-class Bench extends Builder
+class Bench extends Model
 {
     public string $table = __DIR__ . '/../data/bench.csv';
 }

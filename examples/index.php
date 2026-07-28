@@ -8,8 +8,9 @@ error_reporting(E_ALL);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use MotorORM\Builder;
+use MotorORM\Query;
 use MotorORM\Collection;
+use MotorORM\Record;
 use MotorORM\Tests\Models\Story;
 use MotorORM\Tests\Models\Article;
 use MotorORM\Tests\Models\User;
@@ -32,7 +33,7 @@ $title = static function (string $text) use ($eol): void {
  * Print records as a compact table
  */
 $show = static function (mixed $result) use ($eol): void {
-    if ($result instanceof Builder) {
+    if ($result instanceof Record) {
         echo json_encode($result->toArray(), JSON_UNESCAPED_UNICODE) . $eol;
 
         return;
@@ -71,7 +72,7 @@ $title('Группа условий: Миша AND (id = 10 OR id = 11)');
 $show(
     Article::query()
         ->where('name', 'Миша')
-        ->where(static function (Builder $query) {
+        ->where(static function (Query $query) {
             $query->where('id', 10)->orWhere('id', 11);
         })
         ->get()
@@ -113,7 +114,7 @@ $show(Article::query()->misha()->limit(2)->get());
 $title('Условный запрос when');
 $show(
     Article::query()
-        ->when(true, static fn (Builder $query) => $query->where('name', 'Миша'))
+        ->when(true, static fn (Query $query) => $query->where('name', 'Миша'))
         ->limit(2)
         ->get()
 );

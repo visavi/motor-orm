@@ -4,14 +4,17 @@ namespace MotorORM\Tests;
 
 use BadMethodCallException;
 use InvalidArgumentException;
-use MotorORM\Builder;
+use MotorORM\Query;
 use MotorORM\Tests\Models\Article;
+use MotorORM\Tests\Models\CastedEvent;
+use MotorORM\Tests\Models\Event;
 use MotorORM\Tests\Models\Setting;
+use MotorORM\Tests\Models\StringKeyEvent;
 use MotorORM\Tests\Models\TagStory;
 use PHPUnit\Framework\Attributes\CoversClass;
 use UnexpectedValueException;
 
-#[CoversClass(Builder::class)]
+#[CoversClass(Query::class)]
 final class QueryTest extends TestCase
 {
     /**
@@ -35,7 +38,7 @@ final class QueryTest extends TestCase
     {
         $find = Article::query()
             ->where('name', 'Миша')
-            ->where(static function (Builder $query) {
+            ->where(static function (Query $query) {
                 $query->where('id', 10)->orWhere('id', 11);
             })
             ->get();
@@ -53,7 +56,7 @@ final class QueryTest extends TestCase
     {
         $find = Article::query()
             ->where('id', 1)
-            ->orWhere(static function (Builder $query) {
+            ->orWhere(static function (Query $query) {
                 $query->where('name', 'Миша')->where('time', 1231231236);
             })
             ->get();
@@ -113,8 +116,8 @@ final class QueryTest extends TestCase
     public function testWhen(): void
     {
         $find = Article::query()
-            ->when(true, static fn (Builder $query) => $query->where('name', 'Миша'))
-            ->when(false, static fn (Builder $query) => $query->where('id', 999))
+            ->when(true, static fn (Query $query) => $query->where('name', 'Миша'))
+            ->when(false, static fn (Query $query) => $query->where('id', 999))
             ->get();
 
         $this->assertCount(3, $find);
@@ -129,8 +132,8 @@ final class QueryTest extends TestCase
         $find = Article::query()
             ->when(
                 false,
-                static fn (Builder $query) => $query->where('id', 999),
-                static fn (Builder $query) => $query->where('name', 'Миша'),
+                static fn (Query $query) => $query->where('id', 999),
+                static fn (Query $query) => $query->where('name', 'Миша'),
             )
             ->get();
 
@@ -183,6 +186,72 @@ final class QueryTest extends TestCase
     }
 
     /**
+     * Nothing is cast because of how a column is named, whatever the
+     * name suggests and whatever the value looks like
+     *
+     */
+    public function testUndeclaredColumnsStayStrings(): void
+    {
+        $find = Event::query()->find(1);
+
+        $this->assertSame('3f2a-9b', $find->uuid_id);
+        $this->assertSame('2026-07-28 12:30:00', $find->created_at);
+        $this->assertSame('1231231234', $find->updated_at);
+    }
+
+    /**
+     * A numeric primary key is an int without being declared
+     *
+     */
+    public function testNumericPrimaryKeyIsInt(): void
+    {
+        $this->assertSame(1, Event::query()->find(1)->id);
+    }
+
+    /**
+     * A string primary key stays a string
+     *
+     */
+    public function testStringPrimaryKeyStaysString(): void
+    {
+        $this->assertSame('key1', Setting::query()->find('key1')->key);
+    }
+
+    /**
+     * A declared cast overrides what the primary key would get
+     *
+     */
+    public function testDeclaredCastOnPrimaryKey(): void
+    {
+        $this->assertSame('1', StringKeyEvent::query()->find(1)->id);
+    }
+
+    /**
+     * A declared cast is applied
+     *
+     */
+    public function testDeclaredCast(): void
+    {
+        $find = CastedEvent::query()->find(1);
+
+        $this->assertSame(1, $find->id);
+        $this->assertSame(1231231234, $find->updated_at);
+        $this->assertSame('2026-07-28 12:30:00', $find->created_at);
+    }
+
+    /**
+     * An empty value is null whether or not a cast was declared
+     *
+     */
+    public function testEmptyValueIsNull(): void
+    {
+        $find = CastedEvent::query()->find(2);
+
+        $this->assertNull($find->updated_at);
+        $this->assertNull($find->title);
+    }
+
+    /**
      * Re-reading a record drops the unsaved changes
      */
     public function testFirstRereadsTheRecord(): void
@@ -190,7 +259,7 @@ final class QueryTest extends TestCase
         $find = Article::query()->find(1);
         $find->name = 'изменено';
 
-        $this->assertEquals('Петя', $find->first()->name);
+        $this->assertEquals('Петя', $find->fresh()->name);
     }
 
     /**
@@ -235,17 +304,6 @@ final class QueryTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         Article::query()->offset(-1);
-    }
-
-    /**
-     * Invalid sort flag
-     *
-     */
-    public function testInvalidSort(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        Article::query()->orderBy('id', 'random');
     }
 
     /**

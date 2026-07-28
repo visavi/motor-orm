@@ -17,7 +17,6 @@ use Traversable;
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
- * @version 2.0
  */
 class Collection implements Countable, IteratorAggregate, ArrayAccess
 {
@@ -61,16 +60,10 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
     public function first(?callable $callback = null): mixed
     {
         if (is_null($callback)) {
-            return empty($this->items) ? null : reset($this->items);
+            return array_first($this->items);
         }
 
-        foreach ($this->items as $key => $value) {
-            if ($callback($value, $key)) {
-                return $value;
-            }
-        }
-
-        return null;
+        return array_find($this->items, $callback);
     }
 
     /**
@@ -83,16 +76,10 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
     public function last(?callable $callback = null): mixed
     {
         if (is_null($callback)) {
-            return empty($this->items) ? null : end($this->items);
+            return array_last($this->items);
         }
 
-        foreach (array_reverse($this->items, true) as $key => $value) {
-            if ($callback($value, $key)) {
-                return $value;
-            }
-        }
-
-        return null;
+        return array_find(array_reverse($this->items, true), $callback);
     }
 
     /**
@@ -170,7 +157,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
     public function contains(mixed $value, bool $strict = false): bool
     {
         if ($value instanceof Closure) {
-            return $this->search($value) !== false;
+            return array_any($this->items, $value);
         }
 
         return in_array($value, $this->items, $strict);
@@ -276,6 +263,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      *
      * @return self
      */
+    #[\NoDiscard('the collection is not changed in place, use the one that is returned')]
     public function slice(int $offset, ?int $length = null): self
     {
         return new self(array_slice($this->items, $offset, $length, true));
@@ -289,6 +277,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      *
      * @return self
      */
+    #[\NoDiscard('the collection is not changed in place, use the one that is returned')]
     public function pluck(string $value, ?string $key = null): self
     {
         if ($key === null) {
@@ -308,6 +297,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      *
      * @return self
      */
+    #[\NoDiscard('the collection is not changed in place, use the one that is returned')]
     public function keyBy(string|Closure $key): self
     {
         $keyed = [];
@@ -335,6 +325,7 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
      *
      * @return self
      */
+    #[\NoDiscard('the collection is not changed in place, use the one that is returned')]
     public function filter(?callable $callback = null): self
     {
         if ($callback) {

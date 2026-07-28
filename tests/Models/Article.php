@@ -2,7 +2,8 @@
 
 namespace MotorORM\Tests\Models;
 
-use MotorORM\Builder;
+use MotorORM\Model;
+use MotorORM\Query;
 
 /**
  * Class Article
@@ -11,20 +12,20 @@ use MotorORM\Builder;
  * @property string $name
  * @property string $title
  * @property string $text
- * @property int $time
+ * @property string $time
  */
-class Article extends Builder
+class Article extends Model
 {
     public string $table = __DIR__ . '/../../tests/data/articles.csv';
 
     /**
      * Scope without parameters
      *
-     * @param Builder $query
+     * @param Query $query
      *
      * @return Builder
      */
-    public function scopeMisha(Builder $query): Builder
+    public function scopeMisha(Query $query): Query
     {
         return $query->where('name', 'Миша');
     }
@@ -32,12 +33,12 @@ class Article extends Builder
     /**
      * Scope with a parameter
      *
-     * @param Builder $query
+     * @param Query $query
      * @param string  $name
      *
      * @return Builder
      */
-    public function scopeOfName(Builder $query, string $name): Builder
+    public function scopeOfName(Query $query, string $name): Query
     {
         return $query->where('name', $name);
     }

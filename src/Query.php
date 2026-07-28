@@ -8,86 +8,65 @@ use ArrayIterator;
 use BadMethodCallException;
 use CallbackFilterIterator;
 use Closure;
+use Generator;
 use InvalidArgumentException;
 use Iterator;
 use LimitIterator;
 use RuntimeException;
 use SplFileObject;
-use SplTempFileObject;
-use stdClass;
+use Throwable;
 use UnexpectedValueException;
 
 /**
- * Builder file ORM
+ * Query over a table
  *
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
- * @version 3.x
  */
-abstract class Builder
+final class Query
 {
-    public const SORT_ASC = 'asc';
-    public const SORT_DESC = 'desc';
-
-    public const SORT_TYPES = [
-        self::SORT_ASC,
-        self::SORT_DESC
-    ];
+    /**
+     * @param Model $model the table being queried
+     */
+    public function __construct(private readonly Model $model) {}
 
     /** Separator, enclosure and escape character used for every csv file */
-    public const CSV_CONTROL = [',', '"', '\\'];
-
-    protected string $table;
-    protected ?string $tableDir = null;
+    /**
+     * The cast the primary key gets when the model declares none: a generated
+     * key is a number and reads back as one, a key that is not stays untouched
+     */
+    private const string CAST_KEY = 'primary_key';
 
     protected int $offset = 0;
     protected int $limit = -1;
     protected array $headers;
     /** Column name => position, resolved once per query */
     protected array $headerKeys = [];
-    /** Column name => cast, resolved once per query */
-    protected array $castPlan = [];
     protected ?string $primary;
     protected Iterator $iterator;
     protected SplFileObject $file;
 
     protected array $orders = [];
-    protected array $attr = [];
-    protected array $relations = [];
-    /** Every record of the same result, shared so relations load in one query */
-    protected ?stdClass $siblings = null;
-    protected array $relate = [];
+    /** Records of the last result, so a relation loads for all of them at once */
+    private array $rows = [];
     protected array $with = [];
     protected array $where = [];
-    protected array $casts = [];
 
     protected ?string $paginateView = null;
     protected ?string $paginateName = null;
-
-    /**
-     * Begin querying the model.
-     *
-     * @return $this
-     */
-    public static function query(): static
-    {
-        return (new static())->open();
-    }
 
     /**
      * Open file
      *
      * @return $this
      */
-    public function open(): static
+    public function open(): self
     {
-        $this->file       = $this->file();
+        $this->file       = $this->model->file();
         $this->headers    = $this->headers();
         $this->headerKeys = array_flip($this->headers);
         $this->primary    = $this->getPrimaryKey();
-
-        $this->buildCastPlan();
 
         $this->iterator = new LimitIterator($this->file, 1);
 
@@ -98,45 +77,6 @@ abstract class Builder
         );
 
         return $this;
-    }
-
-    /**
-     * Path of the table file, without touching the filesystem
-     *
-     * @return string
-     */
-    public function getPath(): string
-    {
-        return $this->tableDir ? $this->tableDir . '/' . $this->table : $this->table;
-    }
-
-    /**
-     * Open the table file, creating it when it does not exist yet
-     *
-     * @return SplFileObject
-     */
-    public function file(): SplFileObject
-    {
-        $file = new SplFileObject($this->getPath(), 'a+');
-        $file->setCsvControl(...self::CSV_CONTROL);
-        $file->setFlags(
-            SplFileObject::READ_AHEAD |
-            SplFileObject::SKIP_EMPTY |
-            SplFileObject::READ_CSV
-        );
-        $file->rewind();
-
-        return $file;
-    }
-
-    /**
-     * Get table
-     *
-     * @return string
-     */
-    public function getTable(): string
-    {
-        return pathinfo($this->table, PATHINFO_FILENAME);
     }
 
     /**
@@ -168,7 +108,7 @@ abstract class Builder
      */
     public function getForeignKey(): string
     {
-        $className = basename(str_replace('\\', '/', $this::class));
+        $className = basename(str_replace('\\', '/', $this->model::class));
         $model = strtolower(preg_replace('/(.)(?=[A-Z])/u', '$1_', $className));
 
         return  $model . '_' . $this->getPrimaryKey();
@@ -189,10 +129,10 @@ abstract class Builder
         mixed $condition = null,
         mixed $value = null,
         string $operator = 'and'
-    ): static {
+    ): self {
         if ($field instanceof Closure) {
             /* Only the collected conditions are needed, so the table stays closed */
-            $field($builder = new static());
+            $field($builder = new self($this->model));
 
             $this->where[$operator][] = $builder->where;
         } else {
@@ -220,11 +160,11 @@ abstract class Builder
      *
      * @return $this
      */
-    public function orWhere(Closure|string $field, mixed $condition = null, mixed $value = null): static
+    public function orWhere(Closure|string $field, mixed $condition = null, mixed $value = null): self
     {
         if ($field instanceof Closure) {
             /* Only the collected conditions are needed, so the table stays closed */
-            $field($builder = new static());
+            $field($builder = new self($this->model));
 
             $this->where['or'][] = $builder->where;
         } else {
@@ -248,7 +188,7 @@ abstract class Builder
      *
      * @return $this
      */
-    public function whereIn(string $field, array $values, string $operator = 'and'): static
+    public function whereIn(string $field, array $values, string $operator = 'and'): self
     {
         $values = array_flip($values);
 
@@ -270,7 +210,7 @@ abstract class Builder
      *
      * @return $this
      */
-    public function whereNotIn(string $field, array $values, string $operator = 'and'): static
+    public function whereNotIn(string $field, array $values, string $operator = 'and'): self
     {
         $values = array_flip($values);
 
@@ -287,16 +227,12 @@ abstract class Builder
      * Sorting by asc
      *
      * @param string $field
-     * @param string $sort
+     * @param SortOrder $sort
      *
      * @return $this
      */
-    public function orderBy(string $field, string $sort = self::SORT_ASC): static
+    public function orderBy(string $field, SortOrder $sort = SortOrder::Asc): self
     {
-        if (! in_array($sort, self::SORT_TYPES, true)) {
-            throw new InvalidArgumentException(sprintf('%s(), Argument #2 must be a valid sort flag', __METHOD__));
-        }
-
         $this->orders[$field] = $sort;
 
         return $this;
@@ -309,9 +245,9 @@ abstract class Builder
      *
      * @return $this
      */
-    public function orderByDesc(string $field): static
+    public function orderByDesc(string $field): self
     {
-        $this->orders[$field] = self::SORT_DESC;
+        $this->orders[$field] = SortOrder::Desc;
 
         return $this;
     }
@@ -321,25 +257,19 @@ abstract class Builder
      *
      * @param int|string $id
      *
-     * @return static|null
+     * @return Record|null
      */
-    public function find(int|string $id): ?static
+    public function find(int|string $id): ?Record
     {
-        $find = $this->where($this->primary, $id)->first();
-
-        if (! $find) {
-            return null;
-        }
-
-        return $this;
+        return $this->where($this->primary, $id)->first();
     }
 
     /**
      * Get first record
      *
-     * @return static|null
+     * @return Record|null
      */
-    public function first(): ?static
+    public function first(): ?Record
     {
         $this->filtering();
         $this->sorting();
@@ -352,14 +282,16 @@ abstract class Builder
             return null;
         }
 
-        $this->attr = $this->combiner()($this->iterator->current());
+        $record = new Record($this, $this->combiner()($this->iterator->current()));
 
-        /* A single record has no siblings, its relations load for itself */
+        /* A record read on its own has no siblings, its relations load for itself */
+        $this->rows = [$record];
+
         foreach ($this->with as $with) {
-            $this->loadRelation([$this], $with);
+            $this->loadRelation($this->rows, $with);
         }
 
-        return $this;
+        return $record;
     }
 
     /**
@@ -388,6 +320,29 @@ abstract class Builder
         $this->iterator = new LimitIterator($this->iterator, $this->offset, $this->limit);
 
         return new Collection($this->mapper($this->iterator));
+    }
+
+    /**
+     * Walk the matching records one at a time
+     *
+     * Only the record being looked at is held in memory, so a table of any
+     * size can be walked. Nothing is collected, so there are no siblings to
+     * load a relation for: touching one inside the loop reads the related
+     * table once per record, and with() has nothing to attach to
+     *
+     * @return Generator<Record>
+     */
+    public function cursor(): Generator
+    {
+        $this->filtering();
+        $this->sorting();
+        $this->iterator = new LimitIterator($this->iterator, $this->offset, $this->limit);
+
+        $combiner = $this->combiner();
+
+        foreach ($this->iterator as $line) {
+            yield new Record($this, $combiner($line));
+        }
     }
 
     /**
@@ -428,7 +383,7 @@ abstract class Builder
      *
      * @return $this
      */
-    public function limit(int $limit): static
+    public function limit(int $limit): self
     {
         if ($limit < -1) {
             throw new InvalidArgumentException(sprintf('%s() expects the limit to be greater or equal to -1, %s given', __METHOD__, $limit));
@@ -450,7 +405,7 @@ abstract class Builder
      *
      * @return $this
      */
-    public function offset(int $offset): static
+    public function offset(int $offset): self
     {
         if ($offset < 0) {
             throw new InvalidArgumentException(sprintf('%s() expects the offset to be a positive integer or 0, %s given', __METHOD__, $offset));
@@ -470,9 +425,9 @@ abstract class Builder
      *
      * @param array $values
      *
-     * @return $this
+     * @return Record
      */
-    public function create(array $values): static
+    public function create(array $values): Record
     {
         $fields   = array_fill_keys($this->headers, '');
         $diffKeys = array_diff_key($values, $fields);
@@ -481,11 +436,12 @@ abstract class Builder
             throw new UnexpectedValueException(sprintf('%s() called undefined column. Column "%s" does not exist', __METHOD__, key($diffKeys)));
         }
 
-        if (! $this->file->flock(LOCK_EX)) {
-            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->file->getFilename()));
-        }
+        $lock = $this->lockForWrite();
 
         try {
+            /* Another writer may have replaced the file, read it as it is now */
+            $this->reopen();
+
             $ids = $this->primaryKeys();
 
             if (! isset($values[$this->primary])) {
@@ -500,31 +456,33 @@ abstract class Builder
             $current = $this->prepare($current);
             $this->file->fputcsv($current);
         } finally {
-            $this->file->flock(LOCK_UN);
+            flock($lock, LOCK_UN);
+            fclose($lock);
         }
 
-        $this->attr = $values;
-
-        return $this;
+        return new Record($this, $values);
     }
 
     /**
-     * Save record
+     * Write the values of a record back to its row
      *
-     * @return bool
+     * @param array $attr column name => value, including the primary key
+     *
+     * @return bool whether the row was found
      */
-    public function save(): bool
+    public function save(array $attr): bool
     {
         $result = false;
+        $key    = (string) ($attr[$this->primary] ?? '');
 
-        $this->process(function (&$current) use (&$result) {
-            if ((string) $current[0] === (string) $this->attr[$this->primary]) {
-                $current = $this->prepare($this->attr);
+        $this->rewrite(function (array &$current, SplFileObject $target) use (&$result, $attr, $key) {
+            if ((string) $current[0] === $key) {
+                $current = $this->prepare($attr);
 
                 $result = true;
             }
 
-            $this->file->fputcsv($current);
+            $target->fputcsv($current);
         });
 
         return $result;
@@ -551,14 +509,14 @@ abstract class Builder
 
         $combiner = $this->combiner();
 
-        $this->process(function (&$current) use ($combiner, $ids, $values, &$affectedRows) {
+        $this->rewrite(function (array &$current, SplFileObject $target) use ($combiner, $ids, $values, &$affectedRows) {
             if (isset($ids[$current[0]])) {
                 $affectedRows++;
                 $current = array_replace($combiner($current), $values);
                 $current = $this->prepare($current);
             }
 
-            $this->file->fputcsv($current);
+            $target->fputcsv($current);
         });
 
         return $affectedRows;
@@ -573,18 +531,13 @@ abstract class Builder
     {
         $affectedRows = 0;
         $this->filtering();
+        $ids = $this->primaryKeys();
 
-        if ($this->attr) {
-            $ids = [$this->attr[$this->primary] => $this->attr[$this->primary]];
-        } else {
-            $ids = $this->primaryKeys();
-        }
-
-        $this->process(function ($current) use ($ids, &$affectedRows) {
+        $this->rewrite(function (array $current, SplFileObject $target) use ($ids, &$affectedRows) {
             if (isset($ids[$current[0]])) {
                 $affectedRows++;
             } else {
-                $this->file->fputcsv($current);
+                $target->fputcsv($current);
             }
         });
 
@@ -598,16 +551,10 @@ abstract class Builder
      */
     public function truncate(): bool
     {
-        if (! $this->file->flock(LOCK_EX)) {
-            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->file->getFilename()));
-        }
-
-        try {
-            $this->file->seek(0);
-            $this->file->ftruncate($this->file->ftell());
-        } finally {
-            $this->file->flock(LOCK_UN);
-        }
+        /* Only the column names survive, the rest of the table is never read */
+        $this->replace(function (SplFileObject $target) {
+            $target->fputcsv($this->model->file()->current() ?: []);
+        });
 
         return true;
     }
@@ -619,31 +566,19 @@ abstract class Builder
      *
      * @return $this
      */
-    public function with(string|array $relations): static
+    public function with(string|array $relations): self
     {
         $relations = (array) $relations;
 
         foreach ($relations as $relation) {
-            if (! method_exists($this, $relation)) {
-                throw new RuntimeException(sprintf('Call to undefined relationship %s on model %s', $relation, $this::class));
+            if (! $this->model->isRelation($relation)) {
+                throw new RuntimeException(sprintf('Call to undefined relationship %s on model %s', $relation, $this->model::class));
             }
 
             $this->with[] = $relation;
         }
 
         return $this;
-    }
-
-    /**
-     * Whether the relation has already been loaded on this record
-     *
-     * @param string $relation
-     *
-     * @return bool
-     */
-    public function relationLoaded(string $relation): bool
-    {
-        return array_key_exists($relation, $this->relations);
     }
 
     /**
@@ -655,7 +590,7 @@ abstract class Builder
      *
      * @return $this
      */
-    public function when(mixed $value, callable $callback, ?callable $default = null): static
+    public function when(mixed $value, callable $callback, ?callable $default = null): self
     {
         if ($value) {
             return $callback($this, $value) ?? $this;
@@ -669,109 +604,6 @@ abstract class Builder
     }
 
     /**
-     * Has one relation
-     *
-     * @param string $model
-     * @param string|null $foreignKey
-     * @param string|null $localKey
-     *
-     * @return self
-     */
-    public function hasOne(string $model, ?string $foreignKey = null, ?string $localKey = null): self
-    {
-        /* Same as query(), spelled so that a class name in a variable resolves */
-        /** @var self $query */
-        $query = (new $model())->open();
-
-        $foreignKey = $foreignKey ?: $query->getForeignKey();
-        $localKey   = $localKey ?: $this->getPrimaryKey();
-
-        $relate = [
-            'type'       => 'hasOne',
-            'model'      => new $model(),
-            'foreignKey' => $foreignKey,
-            'localKey'   => $localKey,
-        ];
-
-        return $query->setRelate($relate)->where($foreignKey, $this->$localKey);
-    }
-
-    /**
-     * Has many relation
-     *
-     * @param string $model
-     * @param string|null $localKey
-     * @param string|null $foreignKey
-     *
-     * @return self
-     */
-    public function hasMany(string $model, ?string $foreignKey = null, ?string $localKey = null): self
-    {
-        $model      = new $model();
-        $foreignKey = $foreignKey ?: $this->getForeignKey();
-        $localKey   = $localKey ?: $this->getPrimaryKey();
-
-        $relate = [
-            'type'       => 'hasMany',
-            'model'      => $model,
-            'foreignKey' => $foreignKey,
-            'localKey'   => $localKey,
-        ];
-
-        return $model::query()->setRelate($relate)->where($foreignKey, $this->$localKey);
-    }
-
-    /**
-     * Has many through relation
-     *
-     * @param string $model
-     * @param string $through
-     * @param string|null $foreignKey
-     * @param string|null $secondForeignKey
-     * @param string|null $localKey
-     * @param string|null $secondLocalKey
-     *
-     * @return self
-     */
-    public function hasManyThrough(
-        string $model,
-        string $through,
-        ?string $foreignKey = null,
-        ?string $secondForeignKey = null,
-        ?string $localKey = null,
-        ?string $secondLocalKey = null,
-    ): self {
-        /* Same as query(), spelled so that a class name in a variable resolves */
-        /** @var self $modelQuery */
-        $modelQuery = (new $model())->open();
-        /** @var self $throughQuery */
-        $throughQuery = (new $through())->open();
-
-        $foreignKey       = $foreignKey ?: $this->getForeignKey();
-        $secondForeignKey = $secondForeignKey ?: $modelQuery->getForeignKey();
-        $localKey         = $localKey ?: $this->getPrimaryKey();
-        $secondLocalKey   = $secondLocalKey ?: $throughQuery->getPrimaryKey();
-
-        $relate = [
-            'type'             => 'hasManyThrough',
-            'model'            => new $model(),
-            'through'          => new $through(),
-            'foreignKey'       => $foreignKey,
-            'secondForeignKey' => $secondForeignKey,
-            'localKey'         => $localKey,
-            'secondLocalKey'   => $secondLocalKey,
-        ];
-
-        $throughKeys = $throughQuery
-            ->where($foreignKey, $this->$localKey)
-            ->get()
-            ->pluck($secondForeignKey)
-            ->all();
-
-        return $modelQuery->setRelate($relate)->whereIn($secondLocalKey, $throughKeys);
-    }
-
-    /**
      * Combine fields
      *
      * @return Closure
@@ -780,8 +612,13 @@ abstract class Builder
     {
         $headers    = $this->headers;
         $fieldCount = count($headers);
+        $casts      = $this->model->getCasts();
 
-        return function (array $record) use ($headers, $fieldCount): array {
+        if ($this->primary !== null && ! isset($casts[$this->primary])) {
+            $casts[$this->primary] = self::CAST_KEY;
+        }
+
+        return function (array $record) use ($headers, $fieldCount, $casts): array {
             if (count($record) !== $fieldCount) {
                 $record = array_slice(array_pad($record, $fieldCount, null), 0, $fieldCount);
             }
@@ -791,8 +628,8 @@ abstract class Builder
             foreach ($record as $field => $value) {
                 if ($value === '') {
                     $record[$field] = null;
-                } elseif (isset($this->castPlan[$field])) {
-                    $record[$field] = $this->cast($this->castPlan[$field], $value);
+                } elseif (isset($casts[$field])) {
+                    $record[$field] = $this->cast($casts[$field], $value);
                 }
             }
 
@@ -801,34 +638,11 @@ abstract class Builder
     }
 
     /**
-     * Resolve the cast of every column once per query instead of per record
-     *
-     * @return void
-     */
-    private function buildCastPlan(): void
-    {
-        $primary = $this->getPrimaryKey();
-
-        $this->castPlan = [];
-        foreach ($this->headers as $field) {
-            if (isset($this->casts[$field])) {
-                $this->castPlan[$field] = $this->casts[$field];
-            } elseif (
-                $primary === $field
-                || str_ends_with($field, '_id')
-                || str_ends_with($field, '_at')
-            ) {
-                $this->castPlan[$field] = 'int';
-            }
-        }
-    }
-
-    /**
      * Build a model per record, with the eager loaded relations attached
      *
      * @param iterable $values
      *
-     * @return $this[]
+     * @return Record[]
      */
     protected function mapper(iterable $values): array
     {
@@ -836,24 +650,15 @@ abstract class Builder
 
         $rows = [];
         foreach ($values as $line) {
-            $clone = clone $this;
-            $clone->attr = $combiner($line);
-            $rows[] = $clone;
+            $rows[] = new Record($this, $combiner($line));
         }
 
         /*
-         * Every record keeps a reference to the whole result, so that
-         * touching a relation later can load it for all of them at once
-         * instead of scanning the related table once per record
+         * The query holds on to the whole result, so that touching a relation
+         * on one record later can load it for all of them at once instead of
+         * scanning the related table once per record
          */
-        if (count($rows) > 1) {
-            $siblings = new stdClass();
-            $siblings->rows = $rows;
-
-            foreach ($rows as $row) {
-                $row->siblings = $siblings;
-            }
-        }
+        $this->rows = $rows;
 
         foreach ($this->with as $with) {
             if ($rows) {
@@ -872,48 +677,58 @@ abstract class Builder
      *
      * @return void
      */
-    private function loadRelation(array $rows, string $with): void
+    public function loadRelation(array $rows, string $with): void
     {
-        $relation = $this->$with();
-        $relate   = $relation->relate;
-        $localIds = $this->localIds($rows, $relate['localKey']);
+        /** @var Relation $relation */
+        $relation = $this->model->relation($with);
+        $relation->resolve($this);
 
-        if ($relate['type'] === 'hasManyThrough') {
-            $this->eagerLoadThrough($rows, $with, $relate, $localIds);
+        $localIds = $this->localIds($rows, $relation->localKey);
+
+        if ($relation->type === RelationType::HasManyThrough) {
+            $this->eagerLoadThrough($rows, $with, $relation, $localIds);
 
             return;
         }
 
-        $where = $relation->where;
-        $where['and'][0] = [
-            'field'     => $relate['foreignKey'],
-            'condition' => 'in',
-            'value'     => $localIds,
-        ];
+        $model      = $relation->model;
+        $foreignKey = $relation->foreignKey;
 
-        /** @var self $related */
-        $related      = $relate['model'];
-        $class        = $related::class;
-        $relationData = $localIds ? $related::query()->setWhere($where)->get() : [];
+        $related = [];
+        if ($localIds) {
+            $query = $model::query()->whereIn($foreignKey, $localIds);
+            $relation->applyTo($query);
 
-        $foreignKey    = $relate['foreignKey'];
-        $relationByKey = [];
-        foreach ($relationData as $data) {
-            if ($relate['type'] === 'hasOne') {
-                $relationByKey[$data->$foreignKey] ??= $data;
+            $related = $query->get();
+        }
+
+        $byKey = [];
+        foreach ($related as $record) {
+            if ($relation->isSingle()) {
+                $byKey[$record->$foreignKey] ??= $record;
             } else {
-                $relationByKey[$data->$foreignKey][] = $data;
+                $byKey[$record->$foreignKey][] = $record;
             }
         }
 
-        foreach ($rows as $row) {
-            $localId = $row->attr[$relate['localKey']] ?? null;
-            $found   = $relationByKey[$localId] ?? null;
+        $emptyQuery = null;
 
-            /* A missing hasOne gives an empty model, never null */
-            $row->relations[$with] = $relate['type'] === 'hasOne'
-                ? $found ?? new $class()
-                : new Collection($found ?? []);
+        foreach ($rows as $row) {
+            $found = $byKey[$row->attr[$relation->localKey] ?? null] ?? null;
+
+            if (! $relation->isSingle()) {
+                $row->setRelation($with, new Collection($found ?? []));
+
+                continue;
+            }
+
+            /* A missing hasOne gives an empty record, never null */
+            if ($found === null) {
+                $emptyQuery ??= $model::query();
+                $found = new Record($emptyQuery);
+            }
+
+            $row->setRelation($with, $found);
         }
     }
 
@@ -940,57 +755,53 @@ abstract class Builder
     }
 
     /**
-     * Eager load a hasManyThrough relation
+     * Load a hasManyThrough relation
      *
-     * @param array  $rows
-     * @param string $with
-     * @param array  $relate
-     * @param array  $localIds
+     * @param array    $rows
+     * @param string   $with
+     * @param Relation $relation
+     * @param array    $localIds
      *
      * @return void
      */
-    private function eagerLoadThrough(array $rows, string $with, array $relate, array $localIds): void
+    private function eagerLoadThrough(array $rows, string $with, Relation $relation, array $localIds): void
     {
-        $foreignKey       = $relate['foreignKey'];
-        $secondForeignKey = $relate['secondForeignKey'];
-        $secondLocalKey   = $relate['secondLocalKey'];
+        $foreignKey       = $relation->foreignKey;
+        $secondForeignKey = $relation->secondForeignKey;
+        $model            = $relation->model;
+        $through          = $relation->through;
 
         $secondKeysByLocal = [];
         $secondKeys        = [];
 
         if ($localIds) {
-            /** @var self $throughModel */
-            $throughModel = $relate['through'];
-            $through      = $throughModel::query()->whereIn($foreignKey, $localIds)->get();
-
-            foreach ($through as $link) {
+            foreach ($through::query()->whereIn($foreignKey, $localIds)->get() as $link) {
                 $secondKeysByLocal[$link->$foreignKey][] = $link->$secondForeignKey;
                 $secondKeys[$link->$secondForeignKey]    = $link->$secondForeignKey;
             }
         }
 
-        $models = [];
+        $records = [];
         if ($secondKeys) {
-            /** @var self $relatedModel */
-            $relatedModel = $relate['model'];
-            $related      = $relatedModel::query()->whereIn($secondLocalKey, $secondKeys)->get();
+            $query = $model::query()->whereIn($relation->secondLocalKey, $secondKeys);
+            $relation->applyTo($query);
 
-            foreach ($related as $model) {
-                $models[$model->$secondLocalKey] = $model;
+            foreach ($query->get() as $record) {
+                $records[$record->{$relation->secondLocalKey}] = $record;
             }
         }
 
         foreach ($rows as $row) {
-            $localId = $row->attr[$relate['localKey']] ?? null;
+            $localId = $row->attr[$relation->localKey] ?? null;
 
             $items = [];
             foreach ($secondKeysByLocal[$localId] ?? [] as $secondKey) {
-                if (isset($models[$secondKey])) {
-                    $items[] = $models[$secondKey];
+                if (isset($records[$secondKey])) {
+                    $items[] = $records[$secondKey];
                 }
             }
 
-            $row->relations[$with] = new Collection($items);
+            $row->setRelation($with, new Collection($items));
         }
     }
 
@@ -1025,7 +836,7 @@ abstract class Builder
         /* Resolve the column positions once instead of on every comparison */
         $orders = [];
         foreach ($this->orders as $field => $sort) {
-            $orders[$this->getKeyByField($field)] = $sort === self::SORT_ASC;
+            $orders[$this->getKeyByField($field)] = $sort === SortOrder::Asc;
         }
 
         $this->iterator = new ArrayIterator(iterator_to_array($this->iterator));
@@ -1126,6 +937,7 @@ abstract class Builder
     private function cast(string $cast, mixed $value): mixed
     {
         return match ($cast) {
+            self::CAST_KEY => is_numeric($value) ? (int) $value : $value,
             'int', 'integer' => (int) $value,
             'real', 'float', 'double' => (float) $value,
             'string' => (string) $value,
@@ -1253,61 +1065,135 @@ abstract class Builder
     }
 
     /**
-     * Process
+     * Rewrite the table row by row
      *
-     * @param Closure $closure
+     * The rows go to a sibling file that replaces the table in one atomic
+     * step, so a reader never sees a half written table and a failure
+     * leaves the original untouched
+     *
+     * @param Closure $closure called with the record, the file being written and the one being read
      *
      * @return void
      */
-    private function process(Closure $closure): void
+    public function rewrite(Closure $closure): void
     {
-        if (! $this->file->flock(LOCK_EX)) {
-            throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->file->getFilename()));
-        }
+        $this->replace(function (SplFileObject $target) use ($closure) {
+            $source = $this->model->file();
+
+            foreach ($source as $current) {
+                /* Fix drop new line */
+                if ($current === [null]) {
+                    continue;
+                }
+
+                $closure($current, $target, $source);
+            }
+        });
+    }
+
+    /**
+     * Put a freshly written file in place of the table
+     *
+     * The rows go to a sibling file that replaces the table in one atomic
+     * step, so a reader never sees a half written table and a failure
+     * leaves the original untouched
+     *
+     * @param Closure $writer called with the file to write the new table into
+     *
+     * @return void
+     */
+    private function replace(Closure $writer): void
+    {
+        $path     = $this->model->getPath();
+        $tempPath = $path . '.tmp';
+        $lock     = $this->lockForWrite();
 
         try {
-            $this->file->fseek(0);
+            $target = new SplFileObject($tempPath, 'w');
+            $target->setCsvControl(...Model::CSV_CONTROL);
 
-            /* Default memory budget, larger tables spill to a temporary file */
-            $temp = new SplTempFileObject();
-            $temp->setCsvControl(...self::CSV_CONTROL);
-            $temp->setFlags(
-                SplFileObject::READ_AHEAD |
-                SplFileObject::SKIP_EMPTY |
-                SplFileObject::READ_CSV
-            );
+            try {
+                $writer($target);
+            } catch (Throwable $exception) {
+                unset($target);
+                unlink($tempPath);
 
-            while(! $this->file->eof()) {
-                $temp->fwrite($this->file->fread(4096));
+                throw $exception;
             }
 
-            $temp->rewind();
-            $this->file->ftruncate(0);
-            $this->file->fseek(0);
+            unset($target);
 
-            while ($temp->valid()) {
-                $current = $temp->current();
+            chmod($tempPath, fileperms($path) & 0777);
 
-                $closure($current);
-                $temp->next();
+            /* One atomic step: a reader sees either the old table or the new one */
+            if (! rename($tempPath, $path)) {
+                unlink($tempPath);
+
+                throw new UnexpectedValueException(sprintf('Unable to replace table file: %s', $path));
             }
         } finally {
-            $this->file->flock(LOCK_UN);
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+
+        $this->reopen();
+    }
+
+    /**
+     * Take the write lock on the table
+     *
+     * A write replaces the file by a rename, so a lock held on a file that
+     * has just been swapped out protects nothing. Check that the handle
+     * still refers to the file the path points at, and take the lock again
+     * when another writer replaced it while we were waiting
+     *
+     * @return resource
+     */
+    private function lockForWrite()
+    {
+        while (true) {
+            $handle = @fopen($this->model->getPath(), 'r');
+
+            if ($handle === false) {
+                throw new UnexpectedValueException(
+                    sprintf('%s() table "%s" does not exist', __METHOD__, $this->model->getTable())
+                );
+            }
+
+            if (! flock($handle, LOCK_EX)) {
+                fclose($handle);
+
+                throw new UnexpectedValueException(sprintf('Unable to obtain lock on file: %s', $this->model->getPath()));
+            }
+
+            $locked  = fstat($handle);
+            $current = @stat($this->model->getPath());
+
+            if ($current !== false && $current['ino'] === $locked['ino']) {
+                return $handle;
+            }
+
+            flock($handle, LOCK_UN);
+            fclose($handle);
         }
     }
 
     /**
-     * Set relate
+     * Point the builder at the file as it is now, after it was replaced
      *
-     * @param array $relate
-     *
-     * @return $this
+     * @return void
      */
-    private function setRelate(array $relate): static
+    private function reopen(): void
     {
-        $this->relate = $relate;
+        $this->file = $this->model->file();
 
-        return $this;
+        $this->iterator = new LimitIterator($this->file, 1);
+
+        /* Fix drop new line */
+        $this->iterator = new CallbackFilterIterator(
+            $this->iterator,
+            fn ($current) => $current !== [null]
+        );
     }
 
     /**
@@ -1317,7 +1203,7 @@ abstract class Builder
      *
      * @return $this
      */
-    private function setWhere(array $where): static
+    private function setWhere(array $where): self
     {
         $this->where = $where;
 
@@ -1332,60 +1218,55 @@ abstract class Builder
      */
     public function __call(string $name, array $arguments)
     {
-        if (method_exists($this, 'scope' . ucfirst($name))) {
-            return $this->{'scope' . ucfirst($name)}($this, ...$arguments);
+        $scope = 'scope' . ucfirst($name);
+
+        /* A scope is a method of the model that narrows a query */
+        if (method_exists($this->model, $scope)) {
+            return $this->model->$scope($this, ...$arguments);
         }
 
         throw new BadMethodCallException(sprintf(
-            'Call to undefined method %s::%s()', static::class, $name
+            'Call to undefined method %s::%s()', $this->model::class, $name
         ));
     }
 
     /**
-     * @param string $field
+     * Name of the table being queried
      *
-     * @return null
+     * @return string
      */
-    public function __get(string $field)
+    public function getTable(): string
     {
-        if (! array_key_exists($field, $this->attr) && method_exists($this, $field)) {
-            if (! array_key_exists($field, $this->relations)) {
-                $this->loadRelation($this->siblings->rows ?? [$this], $field);
-            }
-
-            return $this->relations[$field];
-        }
-
-        return $this->attr[$field] ?? null;
+        return $this->model->getTable();
     }
 
     /**
-     * @param string $field
-     * @param mixed  $value
-     */
-    public function __set(string $field, mixed $value): void
-    {
-        $this->attr[$field] = $value;
-    }
-
-    /**
-     * @param string $field
+     * Path of the table file
      *
-     * @return bool
+     * @return string
      */
-    public function __isset(string $field)
+    public function getPath(): string
     {
-        return array_key_exists($field, $this->attr);
+        return $this->model->getPath();
     }
 
     /**
-     * @return array
+     * The table being queried
+     *
+     * @return Model
      */
-    public function toArray(): array
+    public function model(): Model
     {
-        return array_map(
-            static fn (mixed $value) => is_object($value) ? $value->toArray() : $value,
-            $this->attr
-        );
+        return $this->model;
+    }
+
+    /**
+     * Records of the last result
+     *
+     * @return Record[]
+     */
+    public function rows(): array
+    {
+        return $this->rows;
     }
 }

@@ -2,3 +2,5 @@
 /.phpunit.cache
 /benchmarks/data
 /tests/data/scratch.csv
+*.csv.tmp
+composer.lock

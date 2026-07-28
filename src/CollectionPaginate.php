@@ -10,7 +10,6 @@ namespace MotorORM;
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
- * @version 2.0
  */
 class CollectionPaginate extends Collection
 {
