@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MotorORM;
 
+use Closure;
 use InvalidArgumentException;
 
 /**
@@ -28,8 +29,17 @@ abstract class PagedCollection extends Collection
     /** Rows to skip to reach the page */
     protected(set) int $offset;
 
-    /** Name of the page parameter in the built urls */
-    protected(set) string $pageName = 'page';
+    /**
+     * Name of the page parameter, in the urls that are built and in the
+     * request the current page is read from
+     *
+     * The page has to be known before a page of rows exists, so the name of
+     * the parameter carrying it cannot belong to that page either
+     */
+    private static string $pageName = 'page';
+
+    /** Where the current page comes from when a query is not told it */
+    private static ?Closure $pageResolver = null;
 
     /** Path the links point at, relative to the current one when it is null */
     protected(set) ?string $path = null;
@@ -197,17 +207,58 @@ abstract class PagedCollection extends Collection
     }
 
     /**
-     * Name the page parameter of the built urls
+     * Name the page parameter
      *
      * @param string $name
      *
-     * @return $this
+     * @return void
      */
-    public function setPageName(string $name): static
+    public static function setPageName(string $name): void
     {
-        $this->pageName = $name;
+        self::$pageName = $name;
+    }
 
-        return $this;
+    /**
+     * Name of the page parameter
+     *
+     * @return string
+     */
+    public static function pageName(): string
+    {
+        return self::$pageName;
+    }
+
+    /**
+     * Say where the current page comes from
+     *
+     * The library reads the query string of the request and nothing else. Any
+     * other source — a PSR-7 request, a router, a console argument — is named
+     * here, and null puts the query string back
+     *
+     * @param Closure|null $resolver called with the name of the page parameter
+     *
+     * @return void
+     */
+    public static function resolvePageUsing(?Closure $resolver): void
+    {
+        self::$pageResolver = $resolver;
+    }
+
+    /**
+     * The page being asked for
+     *
+     * @return int never below the first page
+     */
+    public static function resolveCurrentPage(): int
+    {
+        if (self::$pageResolver) {
+            return max(1, (int) (self::$pageResolver)(self::$pageName));
+        }
+
+        $page = $_GET[self::$pageName] ?? null;
+
+        /* A page that is no number is no page, the first one is meant */
+        return is_numeric($page) ? max(1, (int) $page) : 1;
     }
 
     /**
@@ -276,7 +327,7 @@ abstract class PagedCollection extends Collection
     protected function buildUrl(int $page): string
     {
         $query = http_build_query(
-            $page > 1 ? [$this->pageName => $page] + $this->appends : $this->appends
+            $page > 1 ? [self::$pageName => $page] + $this->appends : $this->appends
         );
 
         if ($query === '') {

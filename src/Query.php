@@ -53,6 +53,9 @@ final class Query
     private int $offset = 0;
     private int $limit = -1;
 
+    /** The page to paginate, taken from the request when it is not spelled out */
+    private ?int $page = null;
+
     private array $with = [];
 
     /**
@@ -367,8 +370,8 @@ final class Query
         $record = new Record($this, $this->mapper->read($iterator->current()));
 
         /* A record read on its own has no siblings, its relations load for itself */
-        foreach ($this->with as $with) {
-            $this->loadRelation([$record], $with);
+        foreach ($this->with as $with => $constraint) {
+            $this->loadRelation([$record], $with, $constraint);
         }
 
         return $record;
@@ -424,20 +427,19 @@ final class Query
     /**
      * Get records with paginate
      *
-     * Which page to show is decided by the caller, reading the request is
-     * none of the query's business
+     * The page is the one page() was told, or the one being asked for
      *
      * @param int $limit
-     * @param int $page
      *
      * @return Pagination<static>
      */
-    public function paginate(int $limit = 10, int $page = 1): Pagination
+    public function paginate(int $limit = 10): Pagination
     {
         $total = $this->count();
 
         /* Which rows to skip has to be known before they are read */
-        $page   = min(max(1, $page), Pagination::lastPageOf($total, $limit));
+        $page   = $this->page ?? Pagination::resolveCurrentPage();
+        $page   = min($page, Pagination::lastPageOf($total, $limit));
         $offset = $page * $limit - $limit;
 
         $iterator = $this->limited($this->pipeline($offset + $limit), $offset, $limit);
@@ -453,13 +455,13 @@ final class Query
      * total, and the table is never read to the end to find them out
      *
      * @param int $limit
-     * @param int $page
      *
      * @return SimplePagination<static>
      */
-    public function simplePaginate(int $limit = 10, int $page = 1): SimplePagination
+    public function simplePaginate(int $limit = 10): SimplePagination
     {
-        $page   = max(1, $page);
+        /* Nothing counted the rows, so there is no last page to keep within */
+        $page   = $this->page ?? SimplePagination::resolveCurrentPage();
         $offset = $page * $limit - $limit;
 
         $iterator = new LimitIterator($this->pipeline($offset + $limit + 1), $offset, $limit + 1);
@@ -505,6 +507,23 @@ final class Query
         }
 
         $this->limit = $limit;
+
+        return $this;
+    }
+
+    /**
+     * Set the page to paginate
+     *
+     * Says outright which page paginate() and simplePaginate() are to read,
+     * instead of letting them ask where the current page comes from
+     *
+     * @param int $page never below the first page
+     *
+     * @return $this
+     */
+    public function page(int $page): self
+    {
+        $this->page = max(1, $page);
 
         return $this;
     }
@@ -592,6 +611,10 @@ final class Query
     /**
      * Eager loading
      *
+     * A relation is named on its own, or named by the key of a closure that
+     * narrows what this one read of it takes. The closure comes on top of
+     * whatever the declaration of the relation already put on it
+     *
      * @param string|array $relations
      *
      * @return $this
@@ -600,12 +623,28 @@ final class Query
     {
         $relations = (array) $relations;
 
-        foreach ($relations as $relation) {
+        foreach ($relations as $key => $value) {
+            $named      = is_int($key);
+            $relation   = $named ? $value : $key;
+            $constraint = $named ? null : $value;
+
+            if (! is_string($relation)) {
+                throw new InvalidArgumentException(
+                    sprintf('%s() a relation is named by a string, %s names none', __METHOD__, get_debug_type($relation))
+                );
+            }
+
+            if ($constraint !== null && ! $constraint instanceof Closure) {
+                throw new InvalidArgumentException(
+                    sprintf('%s() a relation is narrowed by a closure, %s narrows nothing', __METHOD__, get_debug_type($constraint))
+                );
+            }
+
             if (! $this->model->isRelation($relation)) {
                 throw new RuntimeException(sprintf('Call to undefined relationship %s on model %s', $relation, $this->model::class));
             }
 
-            $this->with[] = $relation;
+            $this->with[$relation] = $constraint;
         }
 
         return $this;
@@ -651,9 +690,9 @@ final class Query
 
         $this->siblings($rows);
 
-        foreach ($this->with as $with) {
+        foreach ($this->with as $with => $constraint) {
             if ($rows) {
-                $this->loadRelation($rows, $with);
+                $this->loadRelation($rows, $with, $constraint);
             }
         }
 
@@ -681,14 +720,15 @@ final class Query
     /**
      * Load a relation for the given records with a single query
      *
-     * @param array  $rows
-     * @param string $with
+     * @param array        $rows
+     * @param string       $with
+     * @param Closure|null $constraint narrows this one read of the relation
      *
      * @return void
      */
-    public function loadRelation(array $rows, string $with): void
+    public function loadRelation(array $rows, string $with, ?Closure $constraint = null): void
     {
-        new RelationLoader($this)->load($rows, $with);
+        new RelationLoader($this)->load($rows, $with, $constraint);
     }
 
     /**

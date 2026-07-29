@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MotorORM;
 
+use Closure;
+
 /**
  * Loader of declared relations
  *
@@ -27,11 +29,12 @@ final readonly class RelationLoader
      * Attach a relation to every row
      *
      * @param array<Record> $rows
-     * @param string        $with name the relation is declared under
+     * @param string        $with       name the relation is declared under
+     * @param Closure|null  $constraint narrows this one read of the relation
      *
      * @return void
      */
-    public function load(array $rows, string $with): void
+    public function load(array $rows, string $with, ?Closure $constraint = null): void
     {
         $relation = $this->parent->model()->relation($with);
         $relation->resolve($this->parent);
@@ -39,7 +42,7 @@ final readonly class RelationLoader
         $localIds = $this->localIds($rows, $relation->localKey);
 
         if ($relation->type === RelationType::HasManyThrough) {
-            $this->loadThrough($rows, $with, $relation, $localIds);
+            $this->loadThrough($rows, $with, $relation, $localIds, $constraint);
 
             return;
         }
@@ -50,7 +53,10 @@ final readonly class RelationLoader
         $related = [];
         if ($localIds) {
             $query = $model::query()->whereIn($foreignKey, $localIds);
+
+            /* What the declaration says first, what this read asks for on top */
             $relation->applyTo($query);
+            $constraint?->__invoke($query);
 
             $related = $query->get();
         }
@@ -113,11 +119,18 @@ final readonly class RelationLoader
      * @param array    $rows
      * @param string   $with
      * @param Relation $relation
-     * @param array    $localIds
+     * @param array        $localIds
+     * @param Closure|null $constraint
      *
      * @return void
      */
-    private function loadThrough(array $rows, string $with, Relation $relation, array $localIds): void
+    private function loadThrough(
+        array $rows,
+        string $with,
+        Relation $relation,
+        array $localIds,
+        ?Closure $constraint = null,
+    ): void
     {
         $foreignKey       = $relation->foreignKey;
         $secondForeignKey = $relation->secondForeignKey;
@@ -137,7 +150,9 @@ final readonly class RelationLoader
         $records = [];
         if ($secondKeys) {
             $query = $model::query()->whereIn($relation->secondLocalKey, $secondKeys);
+
             $relation->applyTo($query);
+            $constraint?->__invoke($query);
 
             foreach ($query->get() as $record) {
                 $records[$record->{$relation->secondLocalKey}] = $record;

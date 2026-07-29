@@ -145,7 +145,7 @@ foreach (Story::query()->with(['user', 'tags'])->get() as $story) {
 }
 
 $title('Пагинация');
-$paginate = Article::query()->paginate(5, (int) ($_GET['page'] ?? 2));
+$paginate = Article::query()->page((int) ($_GET['page'] ?? 2))->paginate(5);
 printf(
     'страница %d из %d, показаны %d–%d из %d%s',
     $paginate->currentPage(),
@@ -159,7 +159,7 @@ $show($paginate);
 echo $paginate->withPath('/list')->links() . $eol;
 
 $title('Пагинация без подсчёта');
-$simple = Article::query()->simplePaginate(5, (int) ($_GET['page'] ?? 2));
+$simple = Article::query()->page((int) ($_GET['page'] ?? 2))->simplePaginate(5);
 printf(
     'страница %d, показаны %d–%d, дальше %s%s',
     $simple->currentPage(),

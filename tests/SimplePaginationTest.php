@@ -11,6 +11,30 @@ use MotorORM\Tests\Models\Story;
 final class SimplePaginationTest extends TestCase
 {
     /**
+     * What one test taught the paginator about the request, the next must not inherit
+     */
+    protected function tearDown(): void
+    {
+        SimplePagination::resolvePageUsing(null);
+        SimplePagination::setPageName('page');
+
+        unset($_GET['page']);
+    }
+
+    /**
+     * A query left to itself takes the page from the request
+     */
+    public function testResolvesPageFromRequest(): void
+    {
+        $_GET['page'] = '2';
+
+        $find = Article::query()->simplePaginate(5);
+
+        $this->assertEquals(2, $find->currentPage());
+        $this->assertEquals(6, $find[0]->id);
+    }
+
+    /**
      * A simple paginator knows the page it is on and nothing about the rest
      */
     public function testFirstPage(): void
@@ -163,7 +187,7 @@ final class SimplePaginationTest extends TestCase
      */
     public function testQuery(): void
     {
-        $find = Article::query()->simplePaginate(5, 2);
+        $find = Article::query()->page(2)->simplePaginate(5);
 
         $this->assertInstanceOf(SimplePagination::class, $find);
         $this->assertCount(5, $find);
@@ -184,7 +208,7 @@ final class SimplePaginationTest extends TestCase
      */
     public function testLastPageOfTheTable(): void
     {
-        $find = Article::query()->simplePaginate(15, 2);
+        $find = Article::query()->page(2)->simplePaginate(15);
 
         $this->assertCount(5, $find);
         $this->assertFalse($find->hasMorePages());
@@ -198,7 +222,7 @@ final class SimplePaginationTest extends TestCase
      */
     public function testPageBeyondTheTable(): void
     {
-        $find = Article::query()->simplePaginate(5, 99);
+        $find = Article::query()->page(99)->simplePaginate(5);
 
         $this->assertCount(0, $find);
         $this->assertFalse($find->hasMorePages());

@@ -4,6 +4,7 @@ namespace MotorORM\Tests;
 
 use InvalidArgumentException;
 use MotorORM\Collection;
+use MotorORM\Query;
 use MotorORM\Relation;
 use MotorORM\RelationType;
 use MotorORM\Tests\Models\Story;
@@ -330,6 +331,105 @@ final class RelationTest extends TestCase
 
         Story::query()->with('undefined')->get();
     }
+
+    /**
+     * A relation narrowed where it is eager loaded
+     *
+     */
+    public function testWithClosure(): void
+    {
+        $stories = Story::query()->with([
+            'comments' => static fn (Query $query) => $query->where('id', '>', 1),
+        ])->get();
+
+        $this->assertCount(1, $stories[0]->comments);
+        $this->assertEquals('Comment2', $stories[0]->comments[0]->text);
+        $this->assertCount(1, $stories[1]->comments);
+        $this->assertCount(0, $stories[2]->comments);
+    }
+
+    /**
+     * The closure narrows what the declaration already narrowed
+     *
+     */
+    public function testWithClosureOnTopOfConstraint(): void
+    {
+        $stories = Story::query()->with([
+            'laterComments' => static fn (Query $query) => $query->where('id', '>', 2),
+        ])->get();
+
+        $this->assertCount(0, $stories[0]->laterComments);
+        $this->assertCount(1, $stories[1]->laterComments);
+        $this->assertEquals('Comment3', $stories[1]->laterComments[0]->text);
+    }
+
+    /**
+     * Plain names and narrowed ones travel in the same list
+     *
+     */
+    public function testWithClosureMixedWithNames(): void
+    {
+        $stories = Story::query()->with([
+            'user',
+            'comments' => static fn (Query $query) => $query->where('id', 1),
+        ])->get();
+
+        $this->assertEquals('admin', $stories[0]->user->login);
+        $this->assertCount(1, $stories[0]->comments);
+        $this->assertEquals('Comment1', $stories[0]->comments[0]->text);
+    }
+
+    /**
+     * A relation through an intermediate table is narrowed the same way
+     *
+     */
+    public function testWithClosureThrough(): void
+    {
+        $stories = Story::query()->with([
+            'tags' => static fn (Query $query) => $query->where('name', 'tag2'),
+        ])->get();
+
+        $this->assertCount(1, $stories[0]->tags);
+        $this->assertEquals('tag2', $stories[0]->tags[0]->name);
+        $this->assertCount(0, $stories[1]->tags);
+    }
+
+    /**
+     * A record read on its own is narrowed the same way
+     *
+     */
+    public function testWithClosureOnFind(): void
+    {
+        $story = Story::query()->with([
+            'comments' => static fn (Query $query) => $query->where('id', 2),
+        ])->find(1);
+
+        $this->assertCount(1, $story->comments);
+        $this->assertEquals('Comment2', $story->comments[0]->text);
+    }
+
+    /**
+     * A relation narrowed by something that is not a closure
+     *
+     */
+    public function testWithNonClosure(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        Story::query()->with(['comments' => 'id > 1'])->get();
+    }
+
+    /**
+     * A narrowed relation that is not declared
+     *
+     */
+    public function testWithClosureUndefinedRelation(): void
+    {
+        $this->expectException(RuntimeException::class);
+
+        Story::query()->with(['undefined' => static fn (Query $query) => $query])->get();
+    }
+
     /**
      * A method the model inherits is no relation, whatever it returns
      *

@@ -93,7 +93,7 @@ $articles = Article::query()
     ->published()
     ->whereLike('title', '%orm%')
     ->orderByDesc('created_at')
-    ->paginate(10, (int) ($_GET['page'] ?? 1));
+    ->paginate(10);
 
 foreach ($articles as $article) {
     printf('%s by %s, %d views', $article->title, $article->user->login, $article->views);
@@ -634,6 +634,28 @@ Story::query()
 
 It works on `get()`, `paginate()`, `first()` and `find()` alike.
 
+### Narrowing a relation where it is loaded
+
+A relation can be narrowed in `with()` itself: name it by the key and pass a
+closure as the value. The closure is called with the query on the related table:
+
+```php
+Story::query()
+    ->with([
+        'user',
+        'comments' => static fn (Query $query) => $query->where('approved', 1),
+    ])
+    ->get();
+```
+
+Plain names and narrowed relations travel in the same list.
+
+The difference from `constrain()` is where the condition lives: `constrain()`
+describes a relation that is **always** narrowed and holds on access too, while a
+closure in `with()` narrows **one** read and says nothing about `$story->comments`
+read without `with()`. Given both, the conditions stack — the declared one first,
+what the query asks for on top.
+
 `relationLoaded()` reports whether a relation is already in memory:
 
 ```php
@@ -692,11 +714,11 @@ $articles->keyBy(fn ($a) => 'row' . $a->id);
 
 ## Pagination
 
-`paginate()` returns a `Pagination`, a collection that knows about pages.
-Which page to show is up to you, the library never reads the request:
+`paginate()` returns a `Pagination`, a collection that knows about pages. The
+page comes from the request, out of `?page=`:
 
 ```php
-$articles = Article::query()->paginate(10, (int) ($_GET['page'] ?? 1));
+$articles = Article::query()->paginate(10);
 
 foreach ($articles as $article) {
     echo $article->title;
@@ -733,6 +755,37 @@ $articles->url($articles->lastPage());
 A page out of range falls back to the nearest one, so an absurd number in the
 request cannot produce an empty listing.
 
+### Where the page comes from
+
+Out of `$_GET['page']`. A value that is no number is taken for the first page.
+
+`page()` says which page outright and never looks at the request — for the
+console, for tests, for feeds:
+
+```php
+Article::query()->page(3)->paginate(10);
+```
+
+The name of the parameter is one for the whole application: it is read from the
+request and put into the links.
+
+```php
+Pagination::setPageName('p');   // ?p=3
+```
+
+The request is not the only source. `resolvePageUsing()` says where the page
+comes from, and the closure is given the name of the parameter:
+
+```php
+Pagination::resolvePageUsing(
+    static fn (string $name) => $request->getQueryParams()[$name] ?? 1
+);
+```
+
+Both settings are static and shared by `Pagination` and `SimplePagination`: the
+page has to be known before a page of rows exists, so it cannot belong to one.
+`resolvePageUsing(null)` puts the request back.
+
 ### Pagination without counting
 
 Knowing the total is what buys the numbered links, and it is paid for by reading
@@ -743,7 +796,7 @@ fetching the ten rows of page one takes 0.05 ms, counting the rest takes 64.
 that row was there is the whole answer:
 
 ```php
-$articles = Article::query()->simplePaginate(10, (int) ($_GET['page'] ?? 1));
+$articles = Article::query()->simplePaginate(10);
 
 foreach ($articles as $article) {
     echo $article->title;
@@ -772,10 +825,10 @@ any other collection, and on top of that they know where the page stands among
 the rest.
 
 `links()` renders Bootstrap 5 markup. Pass a template of your own to get anything
-else, and tune the rest with `setPageName()` and `onEachSide()`:
+else:
 
 ```php
-echo $articles->setPageName('p')->onEachSide(3)->links(__DIR__ . '/views/pagination.php');
+echo $articles->onEachSide(3)->links(__DIR__ . '/views/pagination.php');
 ```
 
 The template is given `$pages`, an array of `Page` objects:

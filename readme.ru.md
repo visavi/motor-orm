@@ -94,7 +94,7 @@ $articles = Article::query()
     ->published()
     ->whereLike('title', '%орм%')
     ->orderByDesc('created_at')
-    ->paginate(10, (int) ($_GET['page'] ?? 1));
+    ->paginate(10);
 
 foreach ($articles as $article) {
     printf('%s — %s, %d просмотров', $article->title, $article->user->login, $article->views);
@@ -635,6 +635,28 @@ Story::query()
 
 Работает одинаково на `get()`, `paginate()`, `first()` и `find()`.
 
+### Ограничения на месте загрузки
+
+Связь можно сузить прямо в `with()`, передав её имя ключом, а замыкание значением.
+Замыкание получает запрос к связанной таблице:
+
+```php
+Story::query()
+    ->with([
+        'user',
+        'comments' => static fn (Query $query) => $query->where('approved', 1),
+    ])
+    ->get();
+```
+
+Обычные имена и сужаемые связи перечисляются в одном списке.
+
+Разница с `constrain()` в том, где условие живёт: `constrain()` описывает связь,
+которая **всегда** такая, и работает в том числе при загрузке по обращению;
+замыкание в `with()` сужает **одно** чтение и на `$story->comments` без `with()`
+не влияет. Если есть и то и другое, условия складываются — сначала объявленное,
+затем то, что просит запрос.
+
 `relationLoaded()` сообщает, загружена ли связь:
 
 ```php
@@ -694,11 +716,11 @@ $articles->keyBy(fn ($a) => 'row' . $a->id);
 
 ## Пагинация
 
-`paginate()` возвращает `Pagination` — коллекцию, знающую о страницах.
-Какую страницу показывать, решаете вы: библиотека не читает запрос:
+`paginate()` возвращает `Pagination` — коллекцию, знающую о страницах. Номер
+страницы берётся из запроса — из `?page=`:
 
 ```php
-$articles = Article::query()->paginate(10, (int) ($_GET['page'] ?? 1));
+$articles = Article::query()->paginate(10);
 
 foreach ($articles as $article) {
     echo $article->title;
@@ -735,6 +757,38 @@ $articles->url($articles->lastPage());
 Страница за пределами диапазона приводится к ближайшей, поэтому нелепое число
 в запросе не даст пустой список.
 
+### Откуда берётся страница
+
+Из `$_GET['page']`. Значение, которое числом не является, считается первой
+страницей.
+
+`page()` задаёт страницу явно и запрос не смотрит — для консоли, тестов, фидов:
+
+```php
+Article::query()->page(3)->paginate(10);
+```
+
+Имя параметра — одно на приложение, оно же читается из запроса и подставляется
+в ссылки:
+
+```php
+Pagination::setPageName('p');   // ?p=3
+```
+
+Запрос — не единственный источник. `resolvePageUsing()` говорит, откуда брать
+страницу; замыкание получает имя параметра:
+
+```php
+Pagination::resolvePageUsing(
+    static fn (string $name) => $request->getQueryParams()[$name] ?? 1
+);
+```
+
+Настройки статические и общие для `Pagination` и `SimplePagination`: страницу
+надо знать до того, как появится сама страница строк, так что принадлежать
+объекту эти настройки не могут. `resolvePageUsing(null)` возвращает чтение
+запроса.
+
 ### Пагинация без подсчёта
 
 Общее число строк — это то, что покупает нумерованные ссылки, и платят за него
@@ -746,7 +800,7 @@ $articles->url($articles->lastPage());
 была ли она, — это весь ответ:
 
 ```php
-$articles = Article::query()->simplePaginate(10, (int) ($_GET['page'] ?? 1));
+$articles = Article::query()->simplePaginate(10);
 
 foreach ($articles as $article) {
     echo $article->title;
@@ -774,11 +828,10 @@ echo $articles->withPath('/articles')->links();
 любую другую коллекцию, а сверх того они знают, где эта страница стоит среди
 остальных.
 
-`links()` печатает разметку Bootstrap 5. Для любой другой передайте свой шаблон,
-остальное настраивается через `setPageName()` и `onEachSide()`:
+`links()` печатает разметку Bootstrap 5. Для любой другой передайте свой шаблон:
 
 ```php
-echo $articles->setPageName('p')->onEachSide(3)->links(__DIR__ . '/views/pagination.php');
+echo $articles->onEachSide(3)->links(__DIR__ . '/views/pagination.php');
 ```
 
 В шаблон приходит `$pages` — массив объектов `Page`:

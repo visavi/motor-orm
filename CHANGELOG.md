@@ -1,5 +1,71 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+**`paginate()` and `simplePaginate()` no longer take a page.** The page is the
+one `page()` was told, or the one being asked for — read from `?page=` of the
+request.
+
+```php
+// 5.0
+Article::query()->paginate(10, (int) ($_GET['page'] ?? 1));
+
+// next
+Article::query()->paginate(10);          // takes the page from the request
+Article::query()->page(3)->paginate(10); // says it outright
+```
+
+`page()` sits beside `limit()` and `offset()` and is never below the first page.
+Spelling out the page beats the request.
+
+**`setPageName()` is static and returns nothing.** The page has to be known
+before a page of rows exists, so the name of the parameter carrying it cannot
+belong to that page. It names the parameter in the built urls and in the request
+alike, for `Pagination` and `SimplePagination` both.
+
+```php
+// 5.0
+$articles->setPageName('p')->links();
+
+// next
+Pagination::setPageName('p');
+```
+
+### Added
+
+- **`Query::page()`** — the page to paginate, said outright.
+- **`PagedCollection::resolvePageUsing()`** — where the current page comes from.
+  The closure is given the name of the page parameter; `null` puts the query
+  string of the request back.
+
+```php
+Pagination::resolvePageUsing(
+    static fn (string $name) => $request->getQueryParams()[$name] ?? 1
+);
+```
+
+- **`PagedCollection::resolveCurrentPage()`** — the page being asked for, never
+  below the first one. A value that is no number is taken for the first page.
+- **`PagedCollection::pageName()`** — name of the page parameter.
+
+- **`with()` takes a closure per relation.** A relation named by the key of a
+  closure is narrowed for that one read, the way `constrain()` narrows every read
+  of it. Given both, the conditions stack — the declared one first.
+
+```php
+Story::query()
+    ->with([
+        'user',
+        'comments' => static fn (Query $query) => $query->where('approved', 1),
+    ])
+    ->get();
+```
+
+  Naming a relation the old way is unchanged. A value that is not a closure, and
+  a key that names nothing, raise `InvalidArgumentException`.
+
 ## 5.0.0
 
 A model is no longer the record it reads. The library is now three things — a

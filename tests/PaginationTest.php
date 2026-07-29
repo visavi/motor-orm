@@ -11,6 +11,17 @@ use RuntimeException;
 final class PaginationTest extends TestCase
 {
     /**
+     * What one test taught the paginator about the request, the next must not inherit
+     */
+    protected function tearDown(): void
+    {
+        Pagination::resolvePageUsing(null);
+        Pagination::setPageName('page');
+
+        unset($_GET['page'], $_GET['custom']);
+    }
+
+    /**
      * A paginator is usable the moment it is built
      */
     public function testFirstPage(): void
@@ -26,7 +37,7 @@ final class PaginationTest extends TestCase
     }
 
     /**
-     * The request is none of the paginator's business
+     * A paginator built by hand is told its page, it does not go looking
      */
     public function testRequestIsIgnored(): void
     {
@@ -36,8 +47,6 @@ final class PaginationTest extends TestCase
 
         $this->assertEquals(1, $paginator->page);
         $this->assertEquals(0, $paginator->offset);
-
-        unset($_GET['page']);
     }
 
     /**
@@ -331,9 +340,9 @@ final class PaginationTest extends TestCase
      */
     public function testCustomPageName(): void
     {
-        $paginator = new Pagination([], 100, 10)
-            ->setPageName('custom')
-            ->withPath('/stories');
+        Pagination::setPageName('custom');
+
+        $paginator = new Pagination([], 100, 10)->withPath('/stories');
 
         $items = $paginator->pages();
 
@@ -440,7 +449,7 @@ final class PaginationTest extends TestCase
      */
     public function testCollectionPaginate(): void
     {
-        $find = Article::query()->paginate(5, 2);
+        $find = Article::query()->page(2)->paginate(5);
 
         $this->assertInstanceOf(Pagination::class, $find);
         $this->assertCount(5, $find);
@@ -458,6 +467,95 @@ final class PaginationTest extends TestCase
         $find->withPath('/list')->appends(['q' => 'x']);
         $this->assertStringContainsString('/list?q=x', $find->links());
         $this->assertEquals('/list?page=4&q=x', $find->url(4));
+    }
+
+    /**
+     * A query left to itself takes the page from the request
+     */
+    public function testPaginateResolvesPageFromRequest(): void
+    {
+        $_GET['page'] = '2';
+
+        $find = Article::query()->paginate(5);
+
+        $this->assertEquals(2, $find->currentPage());
+        $this->assertEquals(6, $find[0]->id);
+    }
+
+    /**
+     * A page spelled out beats whatever the request says
+     */
+    public function testPageBeatsTheRequest(): void
+    {
+        $_GET['page'] = '3';
+
+        $find = Article::query()->page(1)->paginate(5);
+
+        $this->assertEquals(1, $find->currentPage());
+    }
+
+    /**
+     * The page comes from wherever it is told to come from
+     */
+    public function testResolvePageUsing(): void
+    {
+        Pagination::resolvePageUsing(static fn () => 3);
+
+        $this->assertEquals(3, Article::query()->paginate(5)->currentPage());
+    }
+
+    /**
+     * The resolver is told which parameter carries the page
+     */
+    public function testResolverIsGivenThePageName(): void
+    {
+        Pagination::setPageName('custom');
+        Pagination::resolvePageUsing(static fn (string $name) => $name === 'custom' ? 2 : 1);
+
+        $this->assertEquals(2, Article::query()->paginate(5)->currentPage());
+    }
+
+    /**
+     * The parameter the page is read from is the one the links are built with
+     */
+    public function testCustomPageNameIsReadFromRequest(): void
+    {
+        Pagination::setPageName('custom');
+
+        $_GET['custom'] = '2';
+        $_GET['page']   = '4';
+
+        $find = Article::query()->paginate(5);
+
+        $this->assertEquals(2, $find->currentPage());
+        $this->assertEquals('?custom=3', $find->url(3));
+    }
+
+    /**
+     * A page that is no number is the first one
+     */
+    public function testUnreadablePageFallsBackToTheFirst(): void
+    {
+        $_GET['page'] = 'nonsense';
+
+        $this->assertEquals(1, Article::query()->paginate(5)->currentPage());
+
+        $_GET['page'] = ['4'];
+
+        $this->assertEquals(1, Article::query()->paginate(5)->currentPage());
+    }
+
+    /**
+     * There is no page before the first one
+     */
+    public function testPageBelowTheFirst(): void
+    {
+        $this->assertEquals(1, Article::query()->page(0)->paginate(5)->currentPage());
+        $this->assertEquals(1, Article::query()->page(-5)->paginate(5)->currentPage());
+
+        $_GET['page'] = '-2';
+
+        $this->assertEquals(1, Article::query()->paginate(5)->currentPage());
     }
 
     /**
