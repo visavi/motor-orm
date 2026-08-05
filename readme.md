@@ -1,4 +1,4 @@
-# Motor ORM
+# Motor ORM — an ORM for CSV
 
 [![Packagist](https://img.shields.io/packagist/v/visavi/motor-orm.svg)](https://packagist.org/packages/visavi/motor-orm)
 [![Tests](https://github.com/visavi/motor-orm/actions/workflows/tests.yml/badge.svg)](https://github.com/visavi/motor-orm/actions/workflows/tests.yml)
@@ -7,7 +7,8 @@
 [![Downloads](https://img.shields.io/packagist/dt/visavi/motor-orm.svg)](https://packagist.org/packages/visavi/motor-orm)
 [![License](https://img.shields.io/packagist/l/visavi/motor-orm.svg)](https://github.com/visavi/motor-orm/blob/master/composer.json)
 
-An object oriented way to work with text data stored in the file system.
+An ORM over plain CSV files: models, queries, relations, pagination and
+migrations, without a database server.
 
 The data lives in plain RFC 4180 csv: a quote inside a value is written twice
 and nothing escapes. Such a file reads the same here and in any other parser.

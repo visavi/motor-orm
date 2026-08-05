@@ -4,7 +4,12 @@
     "keywords": [
         "orm",
         "csv",
-        "text orm"
+        "flat-file",
+        "csv-database",
+        "activerecord",
+        "query-builder",
+        "no-database",
+        "file-storage"
     ],
     "homepage": "https://github.com/visavi/motor-orm",
     "license": "MIT",

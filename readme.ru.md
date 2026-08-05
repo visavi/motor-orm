@@ -1,4 +1,4 @@
-# Motor ORM
+# Motor ORM — ORM для CSV
 
 [![Packagist](https://img.shields.io/packagist/v/visavi/motor-orm.svg)](https://packagist.org/packages/visavi/motor-orm)
 [![Тесты](https://github.com/visavi/motor-orm/actions/workflows/tests.yml/badge.svg)](https://github.com/visavi/motor-orm/actions/workflows/tests.yml)
@@ -7,7 +7,8 @@
 [![Загрузки](https://img.shields.io/packagist/dt/visavi/motor-orm.svg)](https://packagist.org/packages/visavi/motor-orm)
 [![Лицензия](https://img.shields.io/packagist/l/visavi/motor-orm.svg)](https://github.com/visavi/motor-orm/blob/master/composer.json)
 
-ООП подход для работы с текстовыми данными, сохранёнными в файловой системе.
+ORM поверх обычных CSV-файлов: модели, запросы, отношения, пагинация и
+миграции — без сервера базы данных.
 
 Данные лежат в обычных CSV по RFC 4180: кавычка внутри значения удваивается,
 экранирующего символа нет. Такой файл одинаково прочитают и эта библиотека, и
