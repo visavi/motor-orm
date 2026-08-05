@@ -115,21 +115,25 @@ and what the orm costs is the distance to it:
 
 | operation                          | Raw PHP           | Motor ORM         |           |
 |------------------------------------|-------------------|-------------------|-----------|
-| find a record by its key           | 67.2 ms, 0.6 MB   | 72.5 ms, 0.6 MB   | x1.08     |
-| count the rows a condition matches | 67.2 ms, 0.6 MB   | 72.2 ms, 0.6 MB   | x1.08     |
-| read the rows a condition matches  | 67.6 ms, 0.6 MB   | 72.3 ms, 0.7 MB   | x1.07     |
-| a page of ten rows                 | 0.1 ms, 0.6 MB    | 0.1 ms, 0.6 MB    | x1.72     |
-| the last ten, sorted               | 133.9 ms, 33.1 MB | 97.5 ms, 0.6 MB   | **x0.73** |
-| walk the whole table               | 66.8 ms, 0.6 MB   | 82.3 ms, 0.6 MB   | x1.23     |
-| read the whole table               | 69.0 ms, 29.6 MB  | 94.1 ms, 35.3 MB  | x1.36     |
+| find a record by its key           | 67.7 ms, 0.6 MB   | 0.7 ms, 0.6 MB    | **x0.01** |
+| count the rows a condition matches | 66.1 ms, 0.6 MB   | 71.4 ms, 0.6 MB   | x1.08     |
+| read the rows a condition matches  | 67.3 ms, 0.6 MB   | 71.9 ms, 0.7 MB   | x1.07     |
+| a page of ten rows                 | 0.1 ms, 0.6 MB    | 0.1 ms, 0.6 MB    | x1.32     |
+| the last ten, sorted               | 132.5 ms, 33.1 MB | 97.3 ms, 0.6 MB   | **x0.73** |
+| walk the whole table               | 66.4 ms, 0.6 MB   | 81.4 ms, 0.6 MB   | x1.23     |
+| read the whole table               | 69.1 ms, 29.6 MB  | 93.7 ms, 35.4 MB  | x1.36     |
 
 What the orm costs on a scan is under a tenth of the time, and it goes on what
 it is taken for: reading the conditions, casting the values, objects instead of
 arrays.
 
+The lookup by key is out of that row: `find()` does not read the table at all,
+it [halves the file](#finding-by-key), and a walk over every row loses to it by
+two orders of magnitude.
+
 The sorted row stands out: the orm is faster than the raw code and spends 0.6 MB
-instead of 33. The naive version holds the table and sorts all of it, while a
-query with a `limit` carries only the rows that will be in the answer.
+instead of 33. It holds the table and sorts all of it, while a query with a
+`limit` carries only the rows that will be in the answer.
 
 Time is measured warm, memory cold. Loading the classes of the orm costs about a
 millisecond and is paid once per process: on a case that touches ten rows, that
@@ -152,10 +156,10 @@ So what runs out is not the size of the table but the size of the result:
 
 |                                 | 500 000 rows, 41 MB |
 |---------------------------------|---------------------|
-| `cursor()` over the whole table | 785 ms, 0 MB        |
-| `count()`                       | 551 ms, 0 MB        |
-| `orderByDesc('id')->limit(10)`  | 1000 ms, 0 MB       |
-| `paginate(10)`                  | 556 ms, 0 MB        |
+| `cursor()` over the whole table | 787 ms, 0 MB        |
+| `count()`                       | 64 ms, 0 MB         |
+| `orderByDesc('id')->limit(10)`  | 1039 ms, 0 MB       |
+| `paginate(10)`                  | 66 ms, 0 MB         |
 | `get()` of the whole table      | 347 MB              |
 
 A table can be of any size as long as you do not ask for all of it at once. To
@@ -230,6 +234,41 @@ $article->toArray();
 
 `exists()` and `first()` stop reading at the first match, so they cost almost
 nothing on a record near the top of the file.
+
+### Finding by key
+
+`find()` does not read the table. Keys are handed out one after another and a
+rewrite keeps the rows in the order it read them, so the file normally lies
+sorted by its first column, and the row can be reached by halving the file.
+Some twenty reads instead of every row: on a table of 50 000 rows a record at
+the end is found in 2.1 ms rather than 73.
+
+Nothing is taken on trust. The row found has to carry the very key that was
+asked for and to begin where a record begins. The second is settled exactly: a
+value may hold a newline of its own, and then the line behind it looks like a
+row without being one. A quote opens a value and the next one closes it, a
+quote inside a value is written twice, so the quotes before the start of a
+record are an even number of them. The bytes are only counted, not parsed, and
+going over the whole file that way costs some fifty times less than reading it.
+
+Anything that does not add up and `find()` quietly reads the table row by row,
+as it always did. So no one has to keep the file sorted: keys out of order, a
+key that is not a number, a broken row, quotes that do not close — each of them
+means the old full walk and the old answer, only without the speedup. The
+lookup cannot come back with the wrong row: a doubt costs speed, never
+correctness.
+
+Halving is for a bare lookup by key and nothing else. Conditions, an order or an
+offset set before `find()` all mean the table has to be read anyway:
+
+```php
+Article::query()->find(1);                        // by halving the file
+Article::query()->where('name', 'Bob')->find(1);  // by a full walk
+```
+
+A key that is not there costs a full walk too: a missing row and a file sorted
+some other way look the same from outside, and the answer must not depend on
+which of the two it is.
 
 ## Conditions
 
@@ -789,9 +828,14 @@ page has to be known before a page of rows exists, so it cannot belong to one.
 
 ### Pagination without counting
 
-Knowing the total is what buys the numbered links, and it is paid for by reading
-the whole table. On a table of 50 000 rows that is the entire cost of a page:
-fetching the ten rows of page one takes 0.05 ms, counting the rest takes 64.
+Knowing the total is what buys the numbered links, and it is paid for by a walk
+over the whole table. On a table of 50 000 rows that is the entire cost of a
+page: fetching the ten rows of page one takes 0.05 ms, counting the rest takes 6.
+
+A count with nothing to match does not read the rows, only counts them, so what
+it asks for is far less than it used to be. A walk is still a walk, though, and
+on later pages, where the walk to the offset is added to it, the two paginations
+come out close to each other.
 
 `simplePaginate()` does not count. It reads one row past the page, and whether
 that row was there is the whole answer:
@@ -808,8 +852,8 @@ echo $articles->withPath('/articles')->links();
 
 | on 50 000 rows       | first page | page 4 900 |
 |----------------------|------------|------------|
-| `paginate(10)`       | 64.09 ms   | 128.05 ms  |
-| `simplePaginate(10)` | 1.10 ms    | 62.07 ms   |
+| `paginate(10)`       | 7.75 ms    | 60.05 ms   |
+| `simplePaginate(10)` | 1.45 ms    | 54.09 ms   |
 
 Later pages still cost the walk to their offset, which nothing but an index can
 avoid. What the counting bought is gone: there is no `total()` and no

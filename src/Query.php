@@ -33,6 +33,7 @@ final class Query
         $this->conditions = new Conditions();
         $this->sorter     = new Sorter($this->table);
         $this->writer     = new TableWriter($this->table, $this->mapper, $this->conditions);
+        $this->search     = new KeySearch($this->table);
     }
 
     /** The file the model stands for */
@@ -49,6 +50,9 @@ final class Query
 
     /** Everything the query does to the table */
     private readonly TableWriter $writer;
+
+    /** A lookup by primary key that does not read the table */
+    private readonly KeySearch $search;
 
     private int $offset = 0;
     private int $limit = -1;
@@ -342,12 +346,26 @@ final class Query
     /**
      * Get field by primary key
      *
+     * A table normally lies sorted by its first column, and then the row can
+     * be reached by halving the file rather than by reading it. That only
+     * holds for a lookup and nothing else: conditions, an order or a row to
+     * skip to all mean the table has to be read anyway. When the search
+     * cannot vouch for what it found, the read happens as it always did
+     *
      * @param int|string $id
      *
      * @return Record|null
      */
     public function find(int|string $id): ?Record
     {
+        if ($this->conditions->isEmpty() && $this->sorter->isEmpty() && $this->offset === 0) {
+            $row = $this->search->row((string) $id);
+
+            if ($row !== null) {
+                return $this->record($this->mapper->read($row));
+            }
+        }
+
         return $this->where($this->getPrimaryKey(), $id)->first();
     }
 
@@ -367,9 +385,23 @@ final class Query
             return null;
         }
 
-        $record = new Record($this, $this->mapper->read($iterator->current()));
+        return $this->record($this->mapper->read($iterator->current()));
+    }
 
-        /* A record read on its own has no siblings, its relations load for itself */
+    /**
+     * A record of its own, with whatever it was asked to bring along
+     *
+     * A record read on its own has no siblings, so its relations load for
+     * itself alone
+     *
+     * @param array $values column name => value
+     *
+     * @return Record
+     */
+    private function record(array $values): Record
+    {
+        $record = new Record($this, $values);
+
         foreach ($this->with as $with => $constraint) {
             $this->loadRelation([$record], $with, $constraint);
         }
@@ -486,6 +518,12 @@ final class Query
      */
     public function count(): int
     {
+        /* With nothing to match, the rows only have to be counted, and counting
+           them does not go through building an array out of every line */
+        if ($this->conditions->isEmpty()) {
+            return $this->table->countRecords();
+        }
+
         return iterator_count($this->filtering($this->table->records()));
     }
 

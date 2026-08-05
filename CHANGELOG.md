@@ -71,6 +71,55 @@ Pagination::setPageName('p');
 
 ### Performance
 
+**`find()` no longer reads the table.** Keys are handed out one after another
+and a rewrite keeps the rows in the order it read them, so a table normally
+lies sorted by its first column, and the row can be reached by halving the file
+instead of walking it. On 50 000 rows a record at the end of the file went from
+73.6 ms to 2.1 ms, and against the same lookup in raw php from x1.08 to x0.01.
+
+Nothing is taken on trust: the row found has to carry the key that was asked for
+and to begin where a record begins, which is settled by counting the quotes
+before it rather than by parsing anything. Anything that does not add up — keys
+out of order, a key that is not a whole number, a row of the wrong width, quotes
+that do not close — and the table is read row by row as before, for the same
+answer. A key that is not in the table costs that full walk too.
+
+Values holding newlines are no obstacle: a halving that lands inside one steps
+on to the row that follows.
+
+Halving is for a bare lookup: conditions, an order or an offset set before
+`find()` all send the query back to reading the table.
+
+```php
+Article::query()->find(1);                        // by halving the file
+Article::query()->where('name', 'Bob')->find(1);  // by a full walk
+```
+
+`CsvFile` gained the reads this is built on: `rowFrom()` for the first whole row
+at or after a byte, `startsRecord()` for whether a record begins at one, `tell()`
+for where the file stands and `size()` for how long it is.
+
+**A count with nothing to match no longer reads the rows.** Counting has no use
+for the values, and building an array out of every line is most of what reading
+one costs. `count()` without conditions now walks the lines and counts the rows
+they begin, which on 50 000 rows took it from 54.5 ms to 7.3 ms and `paginate()`
+from 55.1 ms to 7.8 ms; on 500 000 rows, from 551 ms to 64 ms. A count that has
+conditions reads the rows as before, since it has to look at them.
+
+A line begins a row unless a value left open on an earlier line runs through it,
+which the quotes tell — the same rule the rest of the reading follows. `CsvFile`
+carries it as `countRows()`, `Table` as `countRecords()`.
+
+**A query opens the table once, not twice.** A file stands at the line naming
+the columns as soon as it is opened, and `Table::records()` used to walk past it
+and leave the columns to be read through a second opening. It keeps them now, so
+the opening a query spent on the header alone is gone. On a read of ten rows,
+where that opening was a quarter of the whole cost, the distance to raw php went
+from x1.68 to x1.32; on a read that scans the table it was never worth measuring.
+
+`Table::headersFrom()` is the column names of a file already open, and what
+`headers()` falls back on when nothing has opened the table yet.
+
 **A read is about a tenth faster.** The rows of a table come out of one
 generator over `fgetcsv` instead of an `SplFileObject` wrapped in a
 `LimitIterator` and a `CallbackFilterIterator`, so a row costs one resume

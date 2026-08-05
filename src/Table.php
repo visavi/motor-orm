@@ -51,17 +51,31 @@ final class Table
     /**
      * Column names
      *
-     * Read through a handle of its own: a column name is asked for while the
-     * rows are already going by, and seeking the handle they come from would
-     * hand the same row out twice
+     * Read through a handle of its own when nothing else has opened the table
+     * yet: a column name is asked for while the rows are already going by, and
+     * seeking the handle they come from would hand the same row out twice
      *
      * @return array
      */
     public function headers(): array
     {
-        if ($this->headers === null) {
-            $file = $this->file();
+        return $this->headers ?? $this->headersFrom($this->file());
+    }
 
+    /**
+     * Column names taken from a file that is already open
+     *
+     * A file stands at its first line as soon as it is opened, so whoever has
+     * one has the column names in hand. Reading them here spares the table a
+     * second opening for the sake of a line that was read anyway
+     *
+     * @param CsvFile $file the table, freshly opened
+     *
+     * @return array
+     */
+    public function headersFrom(CsvFile $file): array
+    {
+        if ($this->headers === null) {
             $this->headers    = $file->current() ?: [];
             $this->headerKeys = array_flip($this->headers);
         }
@@ -100,8 +114,25 @@ final class Table
      */
     public function records(): Iterator
     {
+        $file = $this->file();
+
+        /* The column names are on the line this file stands at, and the query
+           is going to ask for them; taking them now saves opening the table
+           for them alone */
+        $this->headersFrom($file);
+
         /* The first line names the columns, and a trailing newline is no row */
-        return $this->file()->rows(1);
+        return $file->rows(1);
+    }
+
+    /**
+     * How many rows the table holds, header aside
+     *
+     * @return int
+     */
+    public function countRecords(): int
+    {
+        return $this->file()->countRows(1);
     }
 
     /**
