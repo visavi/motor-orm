@@ -4,7 +4,7 @@ namespace MotorORM\Tests;
 
 use MotorORM\Model;
 use MotorORM\Tests\Models\Bulk;
-use SplFileObject;
+use MotorORM\CsvFile;
 use UnexpectedValueException;
 
 final class InsertTest extends TestCase
@@ -17,8 +17,7 @@ final class InsertTest extends TestCase
      */
     public static function setUpBeforeClass(): void
     {
-        $file = new SplFileObject(new Bulk()->getPath(), 'wb');
-        $file->setCsvControl(...Model::CSV_CONTROL);
+        $file = new CsvFile(new Bulk()->getPath(), 'wb', ...Model::CSV_CONTROL);
         $file->fputcsv(['id', 'title', 'text']);
 
         for ($i = 1; $i <= self::ROWS; $i++) {

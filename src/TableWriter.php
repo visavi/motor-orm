@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MotorORM;
 
 use Iterator;
-use SplFileObject;
 use UnexpectedValueException;
 
 /**
@@ -88,7 +87,7 @@ final readonly class TableWriter
         $result = false;
         $key    = (string) ($attr[$this->primaryKey()] ?? '');
 
-        $this->table->rewrite(function (array &$current, SplFileObject $target) use (&$result, $attr, $key) {
+        $this->table->rewrite(function (array &$current, CsvFile $target) use (&$result, $attr, $key) {
             if ((string) $current[0] === $key) {
                 $current = $this->mapper->write($attr);
 
@@ -120,8 +119,8 @@ final readonly class TableWriter
         $reader       = $this->mapper->reader();
 
         /* A row is written as it is read, so nothing of the table is held on to */
-        $this->table->rewrite(function (array &$current, SplFileObject $target, SplFileObject $source) use ($reader, $values, &$affectedRows) {
-            if ($this->matching($current, $source)) {
+        $this->table->rewrite(function (array &$current, CsvFile $target, int $line) use ($reader, $values, &$affectedRows) {
+            if ($this->matching($current, $line)) {
                 $affectedRows++;
                 $current = array_replace($reader($current), $values);
                 $current = $this->mapper->write($current);
@@ -142,8 +141,8 @@ final readonly class TableWriter
     {
         $affectedRows = 0;
 
-        $this->table->rewrite(function (array $current, SplFileObject $target, SplFileObject $source) use (&$affectedRows) {
-            if ($this->matching($current, $source)) {
+        $this->table->rewrite(function (array $current, CsvFile $target, int $line) use (&$affectedRows) {
+            if ($this->matching($current, $line)) {
                 $affectedRows++;
             } else {
                 $target->fputcsv($current);
@@ -163,7 +162,7 @@ final readonly class TableWriter
         /* Only the column names survive, the rest of the table is never read */
         $headers = $this->table->headers();
 
-        $this->table->replace(static function (SplFileObject $target) use ($headers) {
+        $this->table->replace(static function (CsvFile $target) use ($headers) {
             $target->fputcsv($headers);
         });
     }
@@ -174,15 +173,15 @@ final readonly class TableWriter
      * A query without conditions means every row, the same way filtering
      * lets the whole table through
      *
-     * @param array         $record raw row of the file
-     * @param SplFileObject $source the file being read, for the line it stands at
+     * @param array $record raw row of the file
+     * @param int   $line   the line it was read from
      *
      * @return bool
      */
-    private function matching(array $record, SplFileObject $source): bool
+    private function matching(array $record, int $line): bool
     {
         /* A rewrite is handed every line of the file, and the first one names the columns */
-        if ($source->key() === 0) {
+        if ($line === 0) {
             return false;
         }
 

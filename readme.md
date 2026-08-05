@@ -114,15 +114,15 @@ and what the orm costs is the distance to it:
 
 | operation                          | Raw PHP           | Motor ORM         |           |
 |------------------------------------|-------------------|-------------------|-----------|
-| find a record by its key           | 67.1 ms, 0.6 MB   | 81.5 ms, 0.6 MB   | x1.22     |
-| count the rows a condition matches | 66.6 ms, 0.6 MB   | 81.8 ms, 0.6 MB   | x1.23     |
-| read the rows a condition matches  | 66.8 ms, 0.6 MB   | 83.0 ms, 0.6 MB   | x1.24     |
-| a page of ten rows                 | 0.1 ms, 0.6 MB    | 0.1 ms, 0.6 MB    | x1.47     |
-| the last ten, sorted               | 133.6 ms, 33.1 MB | 107.4 ms, 0.6 MB  | **x0.80** |
-| walk the whole table               | 66.0 ms, 0.6 MB   | 90.9 ms, 0.6 MB   | x1.38     |
-| read the whole table               | 67.7 ms, 29.6 MB  | 102.4 ms, 35.3 MB | x1.51     |
+| find a record by its key           | 67.2 ms, 0.6 MB   | 72.5 ms, 0.6 MB   | x1.08     |
+| count the rows a condition matches | 67.2 ms, 0.6 MB   | 72.2 ms, 0.6 MB   | x1.08     |
+| read the rows a condition matches  | 67.6 ms, 0.6 MB   | 72.3 ms, 0.7 MB   | x1.07     |
+| a page of ten rows                 | 0.1 ms, 0.6 MB    | 0.1 ms, 0.6 MB    | x1.72     |
+| the last ten, sorted               | 133.9 ms, 33.1 MB | 97.5 ms, 0.6 MB   | **x0.73** |
+| walk the whole table               | 66.8 ms, 0.6 MB   | 82.3 ms, 0.6 MB   | x1.23     |
+| read the whole table               | 69.0 ms, 29.6 MB  | 94.1 ms, 35.3 MB  | x1.36     |
 
-What the orm costs on a scan is about a quarter of the time, and it goes on what
+What the orm costs on a scan is under a tenth of the time, and it goes on what
 it is taken for: reading the conditions, casting the values, objects instead of
 arrays.
 
@@ -151,18 +151,18 @@ So what runs out is not the size of the table but the size of the result:
 
 |                                 | 500 000 rows, 41 MB |
 |---------------------------------|---------------------|
-| `cursor()` over the whole table | 890 ms, 0 MB        |
-| `count()`                       | 633 ms, 0 MB        |
-| `orderByDesc('id')->limit(10)`  | 1095 ms, 0 MB       |
-| `paginate(10)`                  | 638 ms, 0 MB        |
+| `cursor()` over the whole table | 785 ms, 0 MB        |
+| `count()`                       | 551 ms, 0 MB        |
+| `orderByDesc('id')->limit(10)`  | 1000 ms, 0 MB       |
+| `paginate(10)`                  | 556 ms, 0 MB        |
 | `get()` of the whole table      | 347 MB              |
 
 A table can be of any size as long as you do not ask for all of it at once. To
 walk it there is [`cursor()`](#walking-a-large-table), to show it
 [`paginate()`](#pagination).
 
-The other ceiling is time: a pass costs about 1.3 us a row, so a `where` that
-does not hit the head of the file takes about a second on 500 000 rows. Indexes
+The other ceiling is time: a pass costs about 1.1 us a row, so a `where` that
+does not hit the head of the file takes about half a second on 500 000 rows. Indexes
 are what saves you there, and there are none here.
 
 ## Contents

@@ -4,7 +4,7 @@ namespace MotorORM\Tests;
 
 use MotorORM\Model;
 use MotorORM\Tests\Models\Measure;
-use SplFileObject;
+use MotorORM\CsvFile;
 
 final class CastTest extends TestCase
 {
@@ -13,8 +13,7 @@ final class CastTest extends TestCase
      */
     protected function setUp(): void
     {
-        $file = new SplFileObject(new Measure()->getPath(), 'wb');
-        $file->setCsvControl(...Model::CSV_CONTROL);
+        $file = new CsvFile(new Measure()->getPath(), 'wb', ...Model::CSV_CONTROL);
         $file->fputcsv(['id', 'ratio', 'label', 'enabled', 'tags', 'shape']);
         $file->fputcsv(['1', '1.5', '42', '1', '["a","b"]', '{"side":3}']);
         $file->fputcsv(['2', '0', 'text', '0', '[]', '{}']);

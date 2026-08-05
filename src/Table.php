@@ -4,11 +4,8 @@ declare(strict_types=1);
 
 namespace MotorORM;
 
-use CallbackFilterIterator;
 use Closure;
 use Iterator;
-use LimitIterator;
-use SplFileObject;
 use Throwable;
 use UnexpectedValueException;
 
@@ -44,9 +41,9 @@ final class Table
      * handle is never held on to: a write replaces the table by a rename, and
      * one kept open would point at a file that is no longer it
      *
-     * @return SplFileObject
+     * @return CsvFile
      */
-    public function file(): SplFileObject
+    public function file(): CsvFile
     {
         return $this->model->file();
     }
@@ -103,13 +100,8 @@ final class Table
      */
     public function records(): Iterator
     {
-        $file = $this->file();
-
         /* The first line names the columns, and a trailing newline is no row */
-        return new CallbackFilterIterator(
-            new LimitIterator($file, 1),
-            static fn ($current) => $current !== [null]
-        );
+        return $this->file()->rows(1);
     }
 
     /**
@@ -119,22 +111,15 @@ final class Table
      * step, so a reader never sees a half written table and a failure
      * leaves the original untouched
      *
-     * @param Closure $closure called with the record, the file being written and the one being read
+     * @param Closure $closure called with the record, the file being written and the line it was read from
      *
      * @return void
      */
     public function rewrite(Closure $closure): void
     {
-        $this->replace(function (SplFileObject $target) use ($closure) {
-            $source = $this->file();
-
-            foreach ($source as $current) {
-                /* Fix drop new line */
-                if ($current === [null]) {
-                    continue;
-                }
-
-                $closure($current, $target, $source);
+        $this->replace(function (CsvFile $target) use ($closure) {
+            foreach ($this->file()->rows() as $line => $current) {
+                $closure($current, $target, $line);
             }
         });
     }
@@ -157,8 +142,7 @@ final class Table
         $lock     = $this->lock();
 
         try {
-            $target = new SplFileObject($tempPath, 'wb');
-            $target->setCsvControl(...Model::CSV_CONTROL);
+            $target = new CsvFile($tempPath, 'wb', ...Model::CSV_CONTROL);
 
             try {
                 $writer($target);

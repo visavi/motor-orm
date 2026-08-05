@@ -9,6 +9,7 @@
 
 declare(strict_types=1);
 
+use MotorORM\CsvFile;
 use MotorORM\Model;
 
 const DATA_DIR    = __DIR__ . '/data';
@@ -41,8 +42,7 @@ function generateTable(int $rows): void
 
     printf('Генерирую таблицу на %s строк...%s', number_format($rows, 0, '.', ' '), PHP_EOL);
 
-    $file = new SplFileObject(TABLE, 'wb');
-    $file->setCsvControl(...Model::CSV_CONTROL);
+    $file = new CsvFile(TABLE, 'wb', ...Model::CSV_CONTROL);
     $file->fputcsv(['id', 'name', 'title', 'text', 'time']);
 
     for ($i = 1; $i <= $rows; $i++) {

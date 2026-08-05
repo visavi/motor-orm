@@ -4,6 +4,52 @@
 
 ### Breaking
 
+**`SplFileObject` is gone, `MotorORM\CsvFile` stands in its place.** Php 8.6
+deprecates `SplFileObject::fgetcsv()`, `fputcsv()`, `setCsvControl()` and
+`getCsvControl()`, and csv is all the orm ever opened a file for. `CsvFile` is
+a `SeekableIterator` over a plain handle, reading and writing through `fgetcsv`
+and `fputcsv`, which are not deprecated.
+
+```php
+// 5.0
+$file = $model->file();            // SplFileObject
+
+// next
+$file = $model->file();            // MotorORM\CsvFile
+$file->fputcsv(['id', 'title']);   // the same call
+foreach ($file->rows(1) as $line => $row) {} // header aside, line number => row
+```
+
+`Model::file()`, `Model::createFile()` and `Table::file()` return it, and the
+csv control belongs to the constructor rather than to a setter:
+`new CsvFile($path, 'a+b', ...Model::CSV_CONTROL)`.
+
+**`Table::rewrite()` hands the closure a line number, not the file being read.**
+The rows come out of a generator now, and the line a row came from is what the
+closure ever asked the source for.
+
+```php
+// 5.0
+$table->rewrite(function (array &$current, SplFileObject $target, SplFileObject $source) {
+    if ($source->key() === 0) { /* header */ }
+});
+
+// next
+$table->rewrite(function (array &$current, CsvFile $target, int $line) {
+    if ($line === 0) { /* header */ }
+});
+```
+
+### Performance
+
+**A read is about a tenth faster.** The rows of a table come out of one
+generator over `fgetcsv` instead of an `SplFileObject` wrapped in a
+`LimitIterator` and a `CallbackFilterIterator`, so a row costs one resume
+rather than a call to every method of three iterators. On 50 000 rows, against
+the same work in raw php: reading rows by a condition went from x1.24 to x1.07,
+walking the whole table from x1.38 to x1.23, sorting the last ten from x0.80 to
+x0.73.
+
 **`paginate()` and `simplePaginate()` no longer take a page.** The page is the
 one `page()` was told, or the one being asked for — read from `?page=` of the
 request.

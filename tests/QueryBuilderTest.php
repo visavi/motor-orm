@@ -13,7 +13,7 @@ use MotorORM\Tests\Models\Scratch;
 use MotorORM\Tests\Models\Setting;
 use MotorORM\Tests\Models\Story;
 use RuntimeException;
-use SplFileObject;
+use MotorORM\CsvFile;
 use UnexpectedValueException;
 
 final class QueryBuilderTest extends TestCase
@@ -129,7 +129,7 @@ final class QueryBuilderTest extends TestCase
         $written = 0;
 
         try {
-            new Table(new Item())->rewrite(function (array $current, SplFileObject $target) use (&$written) {
+            new Table(new Item())->rewrite(function (array $current, CsvFile $target) use (&$written) {
                 $target->fputcsv($current);
 
                 /* Two rows are in the new file already when this blows up */

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace MotorORM;
 
 use Closure;
-use SplFileObject;
 use UnexpectedValueException;
 
 /**
@@ -228,9 +227,7 @@ class Migration
             $headers = $this->applyColumn($headers, $column, 0);
         }
 
-        $this->process(function ($temp, &$current) use ($plan) {
-            $line = $temp->key();
-
+        $this->process(function (int $line, array &$current) use ($plan) {
             foreach ($plan as $column) {
                 $current = $this->applyColumn($current, $column, $line);
             }
@@ -317,8 +314,8 @@ class Migration
      */
     private function process(Closure $closure): void
     {
-        $this->table->rewrite(static function (array &$current, SplFileObject $target, SplFileObject $source) use ($closure) {
-            $closure($source, $current);
+        $this->table->rewrite(static function (array &$current, CsvFile $target, int $line) use ($closure) {
+            $closure($line, $current);
 
             $target->fputcsv($current);
         });

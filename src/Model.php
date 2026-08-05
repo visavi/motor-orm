@@ -6,7 +6,6 @@ namespace MotorORM;
 
 use ReflectionMethod;
 use ReflectionNamedType;
-use SplFileObject;
 use UnexpectedValueException;
 
 /**
@@ -84,9 +83,9 @@ abstract class Model
     /**
      * Open the table file
      *
-     * @return SplFileObject
+     * @return CsvFile
      */
-    public function file(): SplFileObject
+    public function file(): CsvFile
     {
         if (! is_file($this->getPath())) {
             throw new UnexpectedValueException(
@@ -103,9 +102,9 @@ abstract class Model
      * Reading must not bring a table into being, so only a migration
      * goes through here
      *
-     * @return SplFileObject
+     * @return CsvFile
      */
-    public function createFile(): SplFileObject
+    public function createFile(): CsvFile
     {
         return $this->openFile();
     }
@@ -224,20 +223,11 @@ abstract class Model
     /**
      * Open the file for reading and appending
      *
-     * @return SplFileObject
+     * @return CsvFile
      */
-    private function openFile(): SplFileObject
+    private function openFile(): CsvFile
     {
         /* Binary mode, so a row is the same bytes on every system */
-        $file = new SplFileObject($this->getPath(), 'a+b');
-        $file->setCsvControl(...self::CSV_CONTROL);
-        $file->setFlags(
-            SplFileObject::READ_AHEAD |
-            SplFileObject::SKIP_EMPTY |
-            SplFileObject::READ_CSV
-        );
-        $file->rewind();
-
-        return $file;
+        return new CsvFile($this->getPath(), 'a+b', ...self::CSV_CONTROL);
     }
 }
