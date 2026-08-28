@@ -10,7 +10,9 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use MotorORM\Query;
 use MotorORM\Collection;
-use MotorORM\Record;
+use MotorORM\Model;
+use MotorORM\PagedCollection;
+use MotorORM\Page;
 use MotorORM\Tests\Models\Story;
 use MotorORM\Tests\Models\Article;
 use MotorORM\Tests\Models\User;
@@ -33,7 +35,7 @@ $title = static function (string $text) use ($eol): void {
  * Print records as a compact table
  */
 $show = static function (mixed $result) use ($eol): void {
-    if ($result instanceof Record) {
+    if ($result instanceof Model) {
         echo json_encode($result->toArray(), JSON_UNESCAPED_UNICODE) . $eol;
 
         return;
@@ -54,6 +56,23 @@ $show = static function (mixed $result) use ($eol): void {
     }
 
     echo var_export($result, true) . $eol;
+};
+
+/**
+ * Print the navigation the way an application would render it
+ */
+$navigation = static function (PagedCollection $paginated): string {
+    $pages = array_map(static function (Page $page): string {
+        if ($page->separator) {
+            return '…';
+        }
+
+        return $page->current
+            ? '[' . $page->name . ']'
+            : $page->name . ' -> ' . $page->url;
+    }, $paginated->pages());
+
+    return implode('   ', $pages);
 };
 
 $title('Поиск по первичному ключу');
@@ -156,7 +175,7 @@ printf(
     $eol,
 );
 $show($paginate);
-echo $paginate->withPath('/list')->links() . $eol;
+echo $navigation($paginate->withPath('/list')) . $eol;
 
 $title('Пагинация без подсчёта');
 $simple = Article::query()->page((int) ($_GET['page'] ?? 2))->simplePaginate(5);
@@ -168,4 +187,4 @@ printf(
     $simple->hasMorePages() ? 'есть' : 'ничего',
     $eol,
 );
-echo $simple->withPath('/list')->links() . $eol;
+echo $navigation($simple->withPath('/list')) . $eol;
