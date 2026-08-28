@@ -7,6 +7,7 @@ use MotorORM\Collection;
 use MotorORM\Query;
 use MotorORM\Relation;
 use MotorORM\RelationType;
+use MotorORM\Tests\Models\Orphan;
 use MotorORM\Tests\Models\Story;
 use MotorORM\Tests\Models\User;
 use RuntimeException;
@@ -428,6 +429,39 @@ final class RelationTest extends TestCase
         $this->expectException(RuntimeException::class);
 
         Story::query()->with(['undefined' => static fn (Query $query) => $query])->get();
+    }
+
+    /**
+     * An empty key reads back as null, and matches nothing
+     *
+     * A null cannot be an array offset, so a row whose key is empty must be
+     * kept out of the lookup instead of being looked up by it
+     */
+    public function testRelationsOfNullKey(): void
+    {
+        $orphans = Orphan::query()->with(['user', 'comments', 'tags'])->get();
+
+        $this->assertNull($orphans[1]->user_id);
+        $this->assertNull($orphans[1]->user->login);
+        $this->assertCount(0, $orphans[1]->comments);
+        $this->assertCount(0, $orphans[1]->tags);
+
+        /* The row that has its keys still gets what it points at */
+        $this->assertEquals('admin', $orphans[0]->user->login);
+        $this->assertCount(2, $orphans[0]->comments);
+        $this->assertCount(2, $orphans[0]->tags);
+    }
+
+    /**
+     * A relation of a null key read one row at a time
+     */
+    public function testLazyRelationsOfNullKey(): void
+    {
+        $orphan = Orphan::query()->find(2);
+
+        $this->assertNull($orphan->user->login);
+        $this->assertCount(0, $orphan->comments);
+        $this->assertCount(0, $orphan->tags);
     }
 
     /**

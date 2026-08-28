@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 6.0.1
+
+### Fixed
+
+**A row whose key is empty no longer warns when its relations are read.** An
+empty column reads back as `null`, and PHP 8.5 deprecates using `null` as an
+array offset, so a guest message, an unassigned row, anything that leaves a
+key blank made the relation loader warn once per row.
+
+A null key matches nothing, which is what such a row got anyway: an empty
+`hasOne`, an empty collection for the rest. It is now kept out of the lookup
+instead of being looked up by.
+
+## 6.0.0
 
 ### Breaking
 

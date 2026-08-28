@@ -63,17 +63,25 @@ final readonly class RelationLoader
 
         $byKey = [];
         foreach ($related as $record) {
+            $key = $record->$foreignKey;
+
+            /* A null key matches nothing, and cannot be an array offset */
+            if ($key === null) {
+                continue;
+            }
+
             if ($relation->isSingle()) {
-                $byKey[$record->$foreignKey] ??= $record;
+                $byKey[$key] ??= $record;
             } else {
-                $byKey[$record->$foreignKey][] = $record;
+                $byKey[$key][] = $record;
             }
         }
 
         $emptyQuery = null;
 
         foreach ($rows as $row) {
-            $found = $byKey[$row->attr[$relation->localKey] ?? null] ?? null;
+            $localId = $row->attr[$relation->localKey] ?? null;
+            $found   = $localId === null ? null : ($byKey[$localId] ?? null);
 
             if (! $relation->isSingle()) {
                 $row->setRelation($with, new Collection($found ?? []));
@@ -142,8 +150,16 @@ final readonly class RelationLoader
 
         if ($localIds) {
             foreach ($through::query()->whereIn($foreignKey, $localIds)->get() as $link) {
-                $secondKeysByLocal[$link->$foreignKey][] = $link->$secondForeignKey;
-                $secondKeys[$link->$secondForeignKey]    = $link->$secondForeignKey;
+                $localId   = $link->$foreignKey;
+                $secondKey = $link->$secondForeignKey;
+
+                /* A null key matches nothing, and cannot be an array offset */
+                if ($localId === null || $secondKey === null) {
+                    continue;
+                }
+
+                $secondKeysByLocal[$localId][] = $secondKey;
+                $secondKeys[$secondKey]        = $secondKey;
             }
         }
 
@@ -155,15 +171,21 @@ final readonly class RelationLoader
             $constraint?->__invoke($query);
 
             foreach ($query->get() as $record) {
-                $records[$record->{$relation->secondLocalKey}] = $record;
+                $secondKey = $record->{$relation->secondLocalKey};
+
+                if ($secondKey !== null) {
+                    $records[$secondKey] = $record;
+                }
             }
         }
 
         foreach ($rows as $row) {
             $localId = $row->attr[$relation->localKey] ?? null;
 
+            $linked = $localId === null ? [] : ($secondKeysByLocal[$localId] ?? []);
+
             $items = [];
-            foreach ($secondKeysByLocal[$localId] ?? [] as $secondKey) {
+            foreach ($linked as $secondKey) {
                 if (isset($records[$secondKey])) {
                     $items[] = $records[$secondKey];
                 }
