@@ -40,7 +40,7 @@ final readonly class TableWriter
      */
     public function insert(array $values): array
     {
-        $primary  = $this->primaryKey();
+        $primary  = $this->table->primaryKey();
         $fields   = array_fill_keys($this->table->headers(), '');
         $diffKeys = array_diff_key($values, $fields);
 
@@ -85,7 +85,7 @@ final readonly class TableWriter
     public function save(array $attr): bool
     {
         $result = false;
-        $key    = (string) ($attr[$this->primaryKey()] ?? '');
+        $key    = (string) ($attr[$this->table->primaryKey()] ?? '');
 
         $this->table->rewrite(function (array &$current, CsvFile $target) use (&$result, $attr, $key) {
             if ((string) $current[0] === $key) {
@@ -203,7 +203,7 @@ final readonly class TableWriter
      */
     private function scanKeys(Iterator $iterator, string $wanted): array
     {
-        $key = $this->table->keyOf($this->primaryKey());
+        $key = $this->table->keyOf($this->table->primaryKey());
 
         $maxId = null;
         $taken = false;
@@ -242,19 +242,10 @@ final readonly class TableWriter
 
         /* Keys are read as raw strings, only a numeric one can be continued */
         if (! is_numeric($maxId)) {
-            throw new UnexpectedValueException(sprintf('%s() no unique ID assigned. Column "%s" cannot be generated', __METHOD__, $this->primaryKey()));
+            throw new UnexpectedValueException(sprintf('%s() no unique ID assigned. Column "%s" cannot be generated', __METHOD__, $this->table->primaryKey()));
         }
 
         return ++$maxId;
     }
 
-    /**
-     * The column a row is known by
-     *
-     * @return string|null
-     */
-    private function primaryKey(): ?string
-    {
-        return $this->table->headers()[0] ?? null;
-    }
 }

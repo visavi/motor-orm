@@ -11,14 +11,12 @@ use RuntimeException;
 final class PaginationTest extends TestCase
 {
     /**
-     * What one test taught the paginator about the request, the next must not inherit
+     * What one test taught the paginator, the next must not inherit
      */
     protected function tearDown(): void
     {
         Pagination::resolvePageUsing(null);
         Pagination::setPageName('page');
-
-        unset($_GET['page'], $_GET['custom']);
     }
 
     /**
@@ -39,9 +37,9 @@ final class PaginationTest extends TestCase
     /**
      * A paginator built by hand is told its page, it does not go looking
      */
-    public function testRequestIsIgnored(): void
+    public function testResolverIsIgnoredWhenBuiltByHand(): void
     {
-        $_GET['page'] = '3';
+        Pagination::resolvePageUsing(static fn () => 3);
 
         $paginator = new Pagination([], 100, 10);
 
@@ -470,11 +468,11 @@ final class PaginationTest extends TestCase
     }
 
     /**
-     * A query left to itself takes the page from the request
+     * A query left to itself takes the page the resolver names
      */
-    public function testPaginateResolvesPageFromRequest(): void
+    public function testPaginateResolvesPage(): void
     {
-        $_GET['page'] = '2';
+        Pagination::resolvePageUsing(static fn () => 2);
 
         $find = Article::query()->paginate(5);
 
@@ -483,11 +481,25 @@ final class PaginationTest extends TestCase
     }
 
     /**
-     * A page spelled out beats whatever the request says
+     * Nothing is read from the environment: with no resolver it is page one
      */
-    public function testPageBeatsTheRequest(): void
+    public function testWithoutAResolverItIsTheFirstPage(): void
     {
         $_GET['page'] = '3';
+
+        try {
+            $this->assertEquals(1, Article::query()->paginate(5)->currentPage());
+        } finally {
+            unset($_GET['page']);
+        }
+    }
+
+    /**
+     * A page spelled out beats whatever the resolver says
+     */
+    public function testPageBeatsTheResolver(): void
+    {
+        Pagination::resolvePageUsing(static fn () => 3);
 
         $find = Article::query()->page(1)->paginate(5);
 
@@ -516,14 +528,12 @@ final class PaginationTest extends TestCase
     }
 
     /**
-     * The parameter the page is read from is the one the links are built with
+     * The parameter the resolver is given is the one the links are built with
      */
-    public function testCustomPageNameIsReadFromRequest(): void
+    public function testCustomPageNameIsTheOneInTheLinks(): void
     {
         Pagination::setPageName('custom');
-
-        $_GET['custom'] = '2';
-        $_GET['page']   = '4';
+        Pagination::resolvePageUsing(static fn (string $name) => ['custom' => 2, 'page' => 4][$name] ?? 1);
 
         $find = Article::query()->paginate(5);
 
@@ -536,11 +546,11 @@ final class PaginationTest extends TestCase
      */
     public function testUnreadablePageFallsBackToTheFirst(): void
     {
-        $_GET['page'] = 'nonsense';
+        Pagination::resolvePageUsing(static fn () => 'nonsense');
 
         $this->assertEquals(1, Article::query()->paginate(5)->currentPage());
 
-        $_GET['page'] = ['4'];
+        Pagination::resolvePageUsing(static fn () => ['4']);
 
         $this->assertEquals(1, Article::query()->paginate(5)->currentPage());
     }
@@ -553,7 +563,7 @@ final class PaginationTest extends TestCase
         $this->assertEquals(1, Article::query()->page(0)->paginate(5)->currentPage());
         $this->assertEquals(1, Article::query()->page(-5)->paginate(5)->currentPage());
 
-        $_GET['page'] = '-2';
+        Pagination::resolvePageUsing(static fn () => -2);
 
         $this->assertEquals(1, Article::query()->paginate(5)->currentPage());
     }

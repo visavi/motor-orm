@@ -28,16 +28,22 @@ composer require visavi/motor-orm
 
 ## Quick start
 
-The library is two things:
+The library is three layers, two of which you write against:
 
-|           | what it is                                  | what it carries                                                       |
-|-----------|---------------------------------------------|-----------------------------------------------------------------------|
-| **Model** | `class Article extends Model`, `$article`   | the table, casts, scopes, relations — and the values of one row        |
-| **Query** | `Article::query()`                          | conditions, sorting, pagination, writing                              |
+|               | what it is                                | what it carries                                                |
+|---------------|-------------------------------------------|----------------------------------------------------------------|
+| **Model**     | `class Article extends Model`, `$article` | the table, casts, scopes, relations — and the values of one row |
+| **Query**     | `Article::query()`                        | conditions, sorting, pagination, writing                        |
+| **the table** | `Table`, `CsvFile`, `RowMapper`, …        | bytes, columns, casts applied, rows filtered and sorted         |
 
 A model declares the table and, once read, is a row of it: whatever a row can
 answer is a method of the model. What it never carries is the query that found
 it — conditions live in `Query`, so a row cannot read the table by accident.
+
+Under the two of them the reading is split further, a class per job: `Table`
+and `CsvFile` for the file, `RowMapper` between rows and values, `Conditions`,
+`Sorter`, `KeySearch`, `TableWriter` and `RelationLoader` for the rest. You
+never name them; they are what `Query` is made of.
 
 ```php
 use MotorORM\Model;
@@ -148,18 +154,18 @@ php benchmarks/compare.php --rows=200000 --runs=5
 ### What it costs in memory
 
 A csv row costs several times more in memory than in the file: an array of five
-columns is about 440 bytes, the model holding it about 690. A file of 41 MB,
-read whole, takes 347 MB.
+columns is about 440 bytes, the model holding it about 790. A file of 41 MB,
+read whole, takes 377 MB.
 
 So what runs out is not the size of the table but the size of the result:
 
 |                                 | 500 000 rows, 41 MB |
 |---------------------------------|---------------------|
-| `cursor()` over the whole table | 787 ms, 0 MB        |
-| `count()`                       | 64 ms, 0 MB         |
-| `orderByDesc('id')->limit(10)`  | 1039 ms, 0 MB       |
-| `paginate(10)`                  | 66 ms, 0 MB         |
-| `get()` of the whole table      | 347 MB              |
+| `cursor()` over the whole table | 797 ms, 0 MB        |
+| `count()`                       | 62 ms, 0 MB         |
+| `orderByDesc('id')->limit(10)`  | 987 ms, 0 MB        |
+| `paginate(10)`                  | 64 ms, 0 MB         |
+| `get()` of the whole table      | 377 MB              |
 
 A table can be of any size as long as you do not ask for all of it at once. To
 walk it there is [`cursor()`](#walking-a-large-table), to show it
@@ -822,34 +828,39 @@ request cannot produce an empty listing.
 
 ### Where the page comes from
 
-Out of `$_GET['page']`. A value that is no number is taken for the first page.
+From wherever the application says, and nowhere else: a library that reads csv
+knows nothing about requests, so it reads no globals of its own. Until it is
+told, the first page is meant.
 
-`page()` says which page outright and never looks at the request — for the
-console, for tests, for feeds:
+`page()` says which page outright:
 
 ```php
 Article::query()->page(3)->paginate(10);
 ```
 
-The name of the parameter is one for the whole application: it is read from the
-request and put into the links.
-
-```php
-Pagination::setPageName('p');   // ?p=3
-```
-
-The request is not the only source. `resolvePageUsing()` says where the page
-comes from, and the closure is given the name of the parameter:
+`resolvePageUsing()` says where an untold query takes it from — once, in the
+bootstrap of the application. The closure is given the name of the parameter,
+and a value that is no number is taken for the first page:
 
 ```php
 Pagination::resolvePageUsing(
     static fn (string $name) => $request->getQueryParams()[$name] ?? 1
 );
+
+/* the plainest one, for an application that lives on $_GET */
+Pagination::resolvePageUsing(static fn (string $name) => $_GET[$name] ?? 1);
+```
+
+The name of the parameter is one for the whole application: it is what the
+resolver is given and what the links are built with.
+
+```php
+Pagination::setPageName('p');   // ?p=3
 ```
 
 Both settings are static and shared by `Pagination` and `SimplePagination`: the
 page has to be known before a page of rows exists, so it cannot belong to one.
-`resolvePageUsing(null)` puts the request back.
+`resolvePageUsing(null)` takes the source away again.
 
 ### Pagination without counting
 

@@ -38,7 +38,32 @@ back the model. `Record::fresh()`, `save()`, `delete()`, `update()`, `key()`,
 `toArray()`, `relationLoaded()` and `newQuery()` are the same methods on the
 model. `RecordMapper` is `RowMapper`.
 
+A row carries the declaration along with its values now, so it costs a little
+more than a record did: about 790 bytes against 690 on five columns, 377 MB
+against 347 for 500 000 rows read whole. Reading a page, walking with
+`cursor()` or counting is unchanged.
+
+**Nothing is read from the environment any more.** `resolveCurrentPage()` used
+to reach into `$_GET`, so an orm that reads csv had an opinion about http, and
+the answer depended on where the code ran — a console command, a queue worker
+and a test all got whatever the last request left behind. The page now comes
+from `page()` or from the resolver the application names, and with neither of
+them it is the first page.
+
+```php
+/* once, in the bootstrap of the application */
+Pagination::resolvePageUsing(static fn (string $name) => $_GET[$name] ?? 1);
+```
+
+**`Collection::__toString()` is gone.** Printing a collection gave back
+`Collection@0000...`, so `<?= $stories ?>` in a template quietly produced a
+hash instead of failing.
+
 ### Added
+
+- **`Table::primaryKey()`** — the column rows are known by, in the one class
+  that owns the columns. `Query`, `TableWriter`, `RowMapper` and `Model` asked
+  the file for its first column each on their own.
 
 - **`save()` inserts a row that has no key yet**, so a model built by hand is
   written the same way as one that was read.

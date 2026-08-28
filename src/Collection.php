@@ -422,14 +422,4 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
     {
         return new ArrayIterator($this->items);
     }
-
-    /**
-     * Returns a string representation of this object.
-     *
-     * @return string
-     */
-    public function __toString()
-    {
-        return self::class . '@' . spl_object_hash($this);
-    }
 }

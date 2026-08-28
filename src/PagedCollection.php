@@ -38,7 +38,13 @@ abstract class PagedCollection extends Collection
      */
     private static string $pageName = 'page';
 
-    /** Where the current page comes from when a query is not told it */
+    /**
+     * Where the current page comes from when a query is not told it
+     *
+     * A library that reads csv knows nothing about requests, so nothing is
+     * read from the environment: until an application says where the page
+     * comes from, the first one is meant
+     */
     private static ?Closure $pageResolver = null;
 
     /** Path the links point at, relative to the current one when it is null */
@@ -231,9 +237,9 @@ abstract class PagedCollection extends Collection
     /**
      * Say where the current page comes from
      *
-     * The library reads the query string of the request and nothing else. Any
-     * other source — a PSR-7 request, a router, a console argument — is named
-     * here, and null puts the query string back
+     * The source is the application's to name — the query string of a request,
+     * a PSR-7 request, a router, a console argument. Until it does, or a query
+     * is told the page outright with page(), the first page is meant
      *
      * @param Closure|null $resolver called with the name of the page parameter
      *
@@ -251,11 +257,11 @@ abstract class PagedCollection extends Collection
      */
     public static function resolveCurrentPage(): int
     {
-        if (self::$pageResolver) {
-            return max(1, (int) (self::$pageResolver)(self::$pageName));
+        if (! self::$pageResolver) {
+            return 1;
         }
 
-        $page = $_GET[self::$pageName] ?? null;
+        $page = (self::$pageResolver)(self::$pageName);
 
         /* A page that is no number is no page, the first one is meant */
         return is_numeric($page) ? max(1, (int) $page) : 1;

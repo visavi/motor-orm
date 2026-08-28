@@ -84,6 +84,16 @@ final class Table
     }
 
     /**
+     * The column rows are known by, the first one of the file
+     *
+     * @return string|null null when the file has no columns at all
+     */
+    public function primaryKey(): ?string
+    {
+        return $this->headers()[0] ?? null;
+    }
+
+    /**
      * Position of a column in a row
      *
      * @param string $field

@@ -18,15 +18,14 @@ final class SimplePaginationTest extends TestCase
         SimplePagination::resolvePageUsing(null);
         SimplePagination::setPageName('page');
 
-        unset($_GET['page']);
     }
 
     /**
-     * A query left to itself takes the page from the request
+     * A query left to itself takes the page the resolver names
      */
-    public function testResolvesPageFromRequest(): void
+    public function testResolvesPage(): void
     {
-        $_GET['page'] = '2';
+        SimplePagination::resolvePageUsing(static fn () => 2);
 
         $find = Article::query()->simplePaginate(5);
 

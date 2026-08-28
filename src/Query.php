@@ -79,7 +79,7 @@ final class Query
      */
     public function getPrimaryKey(): ?string
     {
-        return $this->headers()[0] ?? null;
+        return $this->table->primaryKey();
     }
 
     /**

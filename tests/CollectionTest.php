@@ -311,12 +311,12 @@ final class CollectionTest extends TestCase
     }
 
     /**
-     * Printing a collection says what it is, not what it holds
+     * A collection is no string: printing one is a mistake, not a hash
      */
-    public function testToString(): void
+    public function testIsNotAString(): void
     {
-        $collection = new Collection(['a', 'b']);
+        $this->expectException(\Error::class);
 
-        $this->assertStringStartsWith(Collection::class . '@', (string) $collection);
+        (string) new Collection(['a', 'b']);
     }
 }

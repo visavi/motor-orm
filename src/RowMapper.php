@@ -56,7 +56,7 @@ final readonly class RowMapper
         $headers    = $this->table->headers();
         $fieldCount = count($headers);
         $casts      = $this->model->getCasts();
-        $key        = $headers[0] ?? null;
+        $key        = $this->table->primaryKey();
 
         /* The key is cast by the orm that generated it, unless the model says otherwise */
         $primary = $key !== null && ! isset($casts[$key]) ? $key : null;
