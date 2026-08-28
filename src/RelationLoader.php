@@ -84,7 +84,7 @@ final readonly class RelationLoader
             /* A missing hasOne gives an empty record, never null */
             if ($found === null) {
                 $emptyQuery ??= $model::query();
-                $found = new Record($emptyQuery);
+                $found = $emptyQuery->model()->newRecord($emptyQuery);
             }
 
             $row->setRelation($with, $found);

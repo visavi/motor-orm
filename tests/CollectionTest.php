@@ -4,6 +4,7 @@ namespace MotorORM\Tests;
 
 use MotorORM\Collection;
 use MotorORM\Tests\Models\Article;
+use MotorORM\Tests\Models\Setting;
 
 final class CollectionTest extends TestCase
 {
@@ -133,6 +134,20 @@ final class CollectionTest extends TestCase
         $this->assertInstanceOf(Collection::class, $collection->pluck('name'));
         $this->assertSame(['one', 'two'], $collection->pluck('name')->all());
         $this->assertSame([1 => 'one', 2 => 'two'], $collection->pluck('name', 'id')->all());
+    }
+
+    /**
+     * A record whose column is empty keeps its place, null and all
+     */
+    public function testPluckKeepsNull(): void
+    {
+        $settings = Setting::query()->get();
+
+        $plucked = $settings->pluck('value', 'key')->all();
+
+        $this->assertCount(count($settings), $plucked);
+        $this->assertArrayHasKey('key3', $plucked);
+        $this->assertNull($plucked['key3']);
     }
 
     /**

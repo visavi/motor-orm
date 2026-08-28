@@ -273,6 +273,10 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
     /**
      * Pluck
      *
+     * A column holding null is a column all the same: the item keeps its place
+     * in the result, which is why the values are read rather than collected by
+     * array_column, whose idea of a column an item has is isset()
+     *
      * @param string      $value
      * @param string|null $key
      *
@@ -281,11 +285,31 @@ class Collection implements Countable, IteratorAggregate, ArrayAccess
     #[NoDiscard('the collection is not changed in place, use the one that is returned')]
     public function pluck(string $value, ?string $key = null): self
     {
-        if ($key === null) {
-            return new self(array_column($this->items, $value));
+        $plucked = [];
+        foreach ($this->items as $item) {
+            if ($key === null) {
+                $plucked[] = self::field($item, $value);
+
+                continue;
+            }
+
+            $plucked[self::field($item, $key)] = self::field($item, $value);
         }
 
-        return new self(array_column($this->items, $value, $key));
+        return new self($plucked);
+    }
+
+    /**
+     * One field of an item, whether it is a record or a plain array
+     *
+     * @param mixed  $item
+     * @param string $field
+     *
+     * @return mixed
+     */
+    private static function field(mixed $item, string $field): mixed
+    {
+        return is_array($item) ? ($item[$field] ?? null) : $item->$field;
     }
 
     /**

@@ -37,8 +37,20 @@ abstract class Model
     /** Column name => cast */
     protected array $casts = [];
 
+    /**
+     * Class the rows of this table are read into
+     *
+     * A record holds the values of a row, so whatever a row of this table can
+     * answer belongs here. Naming a class of your own, descended from Record,
+     * makes every read of this table give it back
+     */
+    protected string $record = Record::class;
+
     /** Model and method name => whether the method is a relation */
     private static array $relationNames = [];
+
+    /** Model name => the record class it declares, once it has been checked */
+    private static array $recordClasses = [];
 
     /**
      * Begin querying the model
@@ -78,6 +90,51 @@ abstract class Model
     public function getCasts(): array
     {
         return $this->casts;
+    }
+
+    /**
+     * Name of the class the rows of this table are read into
+     *
+     * Checked once per model: a whole result goes through the same class, and
+     * a check a row would cost a lookup a row
+     *
+     * @return string
+     */
+    public function recordClass(): string
+    {
+        return self::$recordClasses[static::class] ??= $this->checkedRecordClass();
+    }
+
+    /**
+     * Build one record of this table
+     *
+     * @param Query $query the query the record is read with
+     * @param array $attr  column name => value
+     *
+     * @return Record
+     */
+    public function newRecord(Query $query, array $attr = []): Record
+    {
+        $class = $this->recordClass();
+
+        return new $class($query, $attr);
+    }
+
+    /**
+     * The declared record class, once it is known to be one
+     *
+     * @return string
+     */
+    private function checkedRecordClass(): string
+    {
+        if (! is_a($this->record, Record::class, true)) {
+            throw new UnexpectedValueException(sprintf(
+                '%s() record class "%s" of model "%s" is not a %s',
+                __METHOD__, $this->record, static::class, Record::class
+            ));
+        }
+
+        return $this->record;
     }
 
     /**

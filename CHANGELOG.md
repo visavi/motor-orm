@@ -145,6 +145,23 @@ Pagination::resolvePageUsing(
   below the first one. A value that is no number is taken for the first page.
 - **`PagedCollection::pageName()`** — name of the page parameter.
 
+- **`Model::$record`** — the class the rows of a table are read into, `Record`
+  unless the model names another one. Behaviour a row of the table has belongs
+  to that class, and a query gives it back wherever it makes a record — a
+  lookup, a whole result, a cursor, an insert, or a relation that found nobody.
+
+```php
+class Article extends Model
+{
+    protected string $record = ArticleRecord::class;
+}
+
+Article::query()->find(1);   // ArticleRecord
+```
+
+- **`Model::newRecord()` and `Model::recordClass()`** — one record of the table,
+  and the name of the class it is read into, checked once per model.
+
 - **`with()` takes a closure per relation.** A relation named by the key of a
   closure is narrowed for that one read, the way `constrain()` narrows every read
   of it. Given both, the conditions stack — the declared one first.

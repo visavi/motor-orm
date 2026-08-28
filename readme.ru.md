@@ -235,6 +235,34 @@ $article->toArray();
 `exists()` и `first()` прекращают чтение на первом совпадении, поэтому на записи
 в начале файла стоят почти ничего.
 
+### Своя запись
+
+Запись — обычный `Record`, пока модель не назвала свой класс. Всё, что строка
+таблицы умеет отвечать, живёт там: запрос отдаёт названный класс везде, где
+создаёт запись, включая связи:
+
+```php
+class Article extends Model
+{
+    public string $table = 'articles.csv';
+
+    protected string $record = ArticleRecord::class;
+}
+
+class ArticleRecord extends Record
+{
+    public function excerpt(int $words = 30): string
+    {
+        return implode(' ', array_slice(explode(' ', $this->text), 0, $words));
+    }
+}
+
+Article::query()->find(1)->excerpt();   // ArticleRecord
+```
+
+Класс проверяется один раз на модель: имя, которое не является `Record`,
+выбрасывает `UnexpectedValueException`.
+
 ### Поиск по ключу
 
 `find()` таблицу не читает. Ключи выдаются по возрастанию, а перезапись

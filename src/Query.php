@@ -400,7 +400,7 @@ final class Query
      */
     private function record(array $values): Record
     {
-        $record = new Record($this, $values);
+        $record = $this->model->newRecord($this, $values);
 
         foreach ($this->with as $with => $constraint) {
             $this->loadRelation([$record], $with, $constraint);
@@ -450,9 +450,10 @@ final class Query
         $iterator = $this->limited($this->pipeline($this->take($this->offset, $this->limit)), $this->offset, $this->limit);
 
         $reader = $this->mapper->reader();
+        $record = $this->model->recordClass();
 
         foreach ($iterator as $line) {
-            yield new Record($this, $reader($line));
+            yield new $record($this, $reader($line));
         }
     }
 
@@ -597,7 +598,7 @@ final class Query
      */
     public function create(array $values): Record
     {
-        return new Record($this, $this->writer->insert($values));
+        return $this->model->newRecord($this, $this->writer->insert($values));
     }
 
     /**
@@ -720,10 +721,11 @@ final class Query
     private function hydrate(iterable $values): array
     {
         $reader = $this->mapper->reader();
+        $record = $this->model->recordClass();
 
         $rows = [];
         foreach ($values as $line) {
-            $rows[] = new Record($this, $reader($line));
+            $rows[] = new $record($this, $reader($line));
         }
 
         $this->siblings($rows);

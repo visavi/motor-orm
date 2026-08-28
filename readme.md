@@ -235,6 +235,34 @@ $article->toArray();
 `exists()` and `first()` stop reading at the first match, so they cost almost
 nothing on a record near the top of the file.
 
+### A record of your own
+
+A record is a plain `Record` unless the model names a class of its own. Whatever
+a row of the table can answer belongs there — a query gives back that class
+wherever it makes a record, a relation included:
+
+```php
+class Article extends Model
+{
+    public string $table = 'articles.csv';
+
+    protected string $record = ArticleRecord::class;
+}
+
+class ArticleRecord extends Record
+{
+    public function excerpt(int $words = 30): string
+    {
+        return implode(' ', array_slice(explode(' ', $this->text), 0, $words));
+    }
+}
+
+Article::query()->find(1)->excerpt();   // ArticleRecord
+```
+
+The class is checked once per model: a name that is not a `Record` throws an
+`UnexpectedValueException`.
+
 ### Finding by key
 
 `find()` does not read the table. Keys are handed out one after another and a
