@@ -107,7 +107,7 @@ foreach ($articles as $article) {
     printf('%s — %s, %d просмотров', $article->title, $article->user->login, $article->views);
 }
 
-echo $articles->withPath('/articles')->links();
+echo $view->render('pagination', ['pages' => $articles->withPath('/articles')->pages()]);
 ```
 
 Автор каждой статьи здесь не стоит отдельного чтения файла: `$article->user`
@@ -803,7 +803,7 @@ echo $articles->perPage();
 echo $articles->total();
 
 if ($articles->hasPages()) {
-    echo $articles->withPath('/articles')->appends(['sort' => 'new'])->links();
+    $pages = $articles->withPath('/articles')->appends(['sort' => 'new'])->pages();
 }
 ```
 
@@ -886,7 +886,7 @@ foreach ($articles as $article) {
     echo $article->title;
 }
 
-echo $articles->withPath('/articles')->links();
+echo $view->render('pagination', ['pages' => $articles->withPath('/articles')->pages()]);
 ```
 
 | на 50 000 строк      | первая страница | страница 4 900 |
@@ -898,7 +898,7 @@ echo $articles->withPath('/articles')->links();
 только индекс. Пропало то, что покупалось подсчётом: нет `total()` и
 `lastPage()`, а навигация состоит из двух стрелок вместо нумерованных страниц.
 Остальное на месте — `currentPage()`, `perPage()`, `firstItem()`, `lastItem()`,
-`onFirstPage()`, `onLastPage()`, `hasMorePages()`, `url()`, `links()`.
+`onFirstPage()`, `onLastPage()`, `hasMorePages()`, `url()`, `pages()`.
 
 `simplePaginate()` возвращает `SimplePagination`. Методов, которым нужен
 подсчёт, у него просто нет, поэтому обращение к ним падает там, где написано, а
@@ -908,13 +908,12 @@ echo $articles->withPath('/articles')->links();
 любую другую коллекцию, а сверх того они знают, где эта страница стоит среди
 остальных.
 
-`links()` печатает разметку Bootstrap 5. Для любой другой передайте свой шаблон:
+Навигация — данные, а не разметка: `pages()` отдаёт массив объектов `Page`, а
+печатает их приложение — только оно знает, каким должен быть html.
 
 ```php
-echo $articles->onEachSide(3)->links(__DIR__ . '/views/pagination.php');
+echo $view->render('pagination', ['pages' => $articles->onEachSide(3)->pages()]);
 ```
-
-В шаблон приходит `$pages` — массив объектов `Page`:
 
 ```php
 <?php foreach ($pages as $page): ?>
@@ -930,7 +929,8 @@ echo $articles->onEachSide(3)->links(__DIR__ . '/views/pagination.php');
 
 `name` — что печатать, номер страницы или стрелка, `url` — куда ведёт (`null` у
 текущей страницы и у разделителя), `number` — номер страницы, на которую ведёт.
-Экранирование — дело шаблона: встроенный печатает html, а ваш может и не печатать.
+`url` — обычная строка, поэтому экранируйте её так же, как всё остальное в
+шаблоне.
 
 ## Миграции
 

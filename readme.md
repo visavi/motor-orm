@@ -105,7 +105,7 @@ foreach ($articles as $article) {
     printf('%s by %s, %d views', $article->title, $article->user->login, $article->views);
 }
 
-echo $articles->withPath('/articles')->links();
+echo $view->render('pagination', ['pages' => $articles->withPath('/articles')->pages()]);
 ```
 
 The author of each article costs no read of its own here: `$article->user` on
@@ -801,7 +801,7 @@ echo $articles->perPage();
 echo $articles->total();
 
 if ($articles->hasPages()) {
-    echo $articles->withPath('/articles')->appends(['sort' => 'new'])->links();
+    $pages = $articles->withPath('/articles')->appends(['sort' => 'new'])->pages();
 }
 ```
 
@@ -883,7 +883,7 @@ foreach ($articles as $article) {
     echo $article->title;
 }
 
-echo $articles->withPath('/articles')->links();
+echo $view->render('pagination', ['pages' => $articles->withPath('/articles')->pages()]);
 ```
 
 | on 50 000 rows       | first page | page 4 900 |
@@ -895,7 +895,7 @@ Later pages still cost the walk to their offset, which nothing but an index can
 avoid. What the counting bought is gone: there is no `total()` and no
 `lastPage()`, and the navigation is two arrows instead of numbered pages. The
 rest is the same — `currentPage()`, `perPage()`, `firstItem()`, `lastItem()`,
-`onFirstPage()`, `onLastPage()`, `hasMorePages()`, `url()`, `links()`.
+`onFirstPage()`, `onLastPage()`, `hasMorePages()`, `url()`, `pages()`.
 
 `simplePaginate()` returns a `SimplePagination`. The methods that need a total
 are not on it at all, so asking for one fails where it is written rather than
@@ -905,14 +905,13 @@ Both are collections of the rows of their page: walk, count and slice them like
 any other collection, and on top of that they know where the page stands among
 the rest.
 
-`links()` renders Bootstrap 5 markup. Pass a template of your own to get anything
-else:
+The navigation is data, not markup: `pages()` gives an array of `Page` objects
+and the rendering belongs to the application, which is the only side that knows
+what the html should look like.
 
 ```php
-echo $articles->onEachSide(3)->links(__DIR__ . '/views/pagination.php');
+echo $view->render('pagination', ['pages' => $articles->onEachSide(3)->pages()]);
 ```
-
-The template is given `$pages`, an array of `Page` objects:
 
 ```php
 <?php foreach ($pages as $page): ?>
@@ -928,8 +927,8 @@ The template is given `$pages`, an array of `Page` objects:
 
 `name` is what to print — a page number or an arrow, `url` is where it leads
 (`null` on the current page and on a separator) and `number` is the page it
-leads to. Escaping is the template's business, since the built-in one writes
-html but yours might not.
+leads to. `url` is a plain string, so escape it as your template escapes
+anything else.
 
 ## Migrations
 

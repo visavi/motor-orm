@@ -268,14 +268,23 @@ final class PaginationTest extends TestCase
     }
 
     /**
-     * The rendered links point at the path itself on the first page
+     * The pages of the first one point at the path itself
      */
-    public function testLinksOfTheFirstPage(): void
+    public function testFirstPageHasNoPageParameter(): void
     {
-        $links = new Pagination([], 100, 10, 5)->withPath('/stories')->links();
+        $paginator = new Pagination([], 100, 10, 5)->withPath('/stories');
 
-        $this->assertStringContainsString('href="/stories"', $links);
-        $this->assertStringNotContainsString('href="/stories?page=1"', $links);
+        $first = array_values(array_filter($paginator->pages(), static fn (Page $page) => $page->number === 1));
+
+        $this->assertSame('/stories', $first[0]->url);
+    }
+
+    /**
+     * A result that fits on one page has no pages to walk
+     */
+    public function testEmptyResultHasNoPages(): void
+    {
+        $this->assertSame([], new Pagination([], 0, 10)->pages());
     }
 
     /**
@@ -348,101 +357,6 @@ final class PaginationTest extends TestCase
     }
 
     /**
-     * Rendered links
-     */
-    public function testLinks(): void
-    {
-        $links = new Pagination([], 30, 10)->links();
-
-        $this->assertStringContainsString('pagination', $links);
-        $this->assertStringContainsString('page=2', $links);
-    }
-
-    /**
-     * Rendered links of an empty result set contain no pages
-     */
-    public function testEmptyLinks(): void
-    {
-        $this->assertStringNotContainsString('page-item', new Pagination([], 0, 10)->links());
-    }
-
-    /**
-     * A path breaking out of the attribute is escaped
-     */
-    public function testLinksEscapeThePath(): void
-    {
-        $links = new Pagination([], 30, 10)
-            ->withPath('/list"><script>alert(1)</script>')
-            ->links();
-
-        $this->assertStringNotContainsString('<script>', $links);
-        $this->assertStringContainsString('&quot;&gt;&lt;script&gt;', $links);
-    }
-
-    /**
-     * Custom view
-     */
-    public function testCustomView(): void
-    {
-        $view = $this->view('<?php foreach ($pages as $page): ?>[<?= $page->separator ? "..." : $page->name ?>]<?php endforeach; ?>');
-
-        $paginator = new Pagination([], 30, 10);
-
-        $this->assertEquals('[1][2][3][»]', $paginator->links($view));
-
-        unlink($view);
-    }
-
-    /**
-     * A view given to links() renders that once and nothing after
-     */
-    public function testCustomViewIsNotRemembered(): void
-    {
-        $view = $this->view('<?php echo "мой";');
-
-        $paginator = new Pagination([], 30, 10);
-
-        $this->assertEquals('мой', $paginator->links($view));
-        $this->assertStringContainsString('page-item', $paginator->links());
-
-        unlink($view);
-    }
-
-    /**
-     * A view that blows up leaves no buffer behind
-     */
-    public function testFailedViewLeavesNoBuffer(): void
-    {
-        $view = $this->view('<?php throw new \RuntimeException("boom");');
-
-        $paginator = new Pagination([], 30, 10);
-        $level     = ob_get_level();
-
-        try {
-            $paginator->links($view);
-            $this->fail('the view was expected to throw');
-        } catch (RuntimeException) {
-            $this->assertEquals($level, ob_get_level());
-        } finally {
-            unlink($view);
-        }
-    }
-
-    /**
-     * A view renders, it does not reach into the paginator
-     */
-    public function testViewCannotReachThePaginator(): void
-    {
-        $view = $this->view('<?php echo isset($this) ? "yes" : "no";');
-
-        $paginator = new Pagination([], 30, 10);
-
-        $this->assertEquals('no', $paginator->links($view));
-
-        unlink($view);
-    }
-
-    /**
      * Paginated collection
      */
     public function testCollectionPaginate(): void
@@ -463,7 +377,7 @@ final class PaginationTest extends TestCase
         $this->assertEquals(6, $find[0]->id);
 
         $find->withPath('/list')->appends(['q' => 'x']);
-        $this->assertStringContainsString('/list?q=x', $find->links());
+        $this->assertSame('/list?q=x', $find->pages()[0]->url);
         $this->assertEquals('/list?page=4&q=x', $find->url(4));
     }
 
@@ -568,32 +482,4 @@ final class PaginationTest extends TestCase
         $this->assertEquals(1, Article::query()->paginate(5)->currentPage());
     }
 
-    /**
-     * A view of one's own on the paginated collection
-     */
-    public function testCollectionPaginateView(): void
-    {
-        $view = $this->view('<?php foreach ($pages as $page): ?>[<?= $page->name ?>]<?php endforeach; ?>');
-
-        $find = Article::query()->paginate(10);
-
-        $this->assertEquals('[1][2][»]', $find->links($view));
-
-        unlink($view);
-    }
-
-    /**
-     * Write a template to a file of its own
-     *
-     * @param string $template
-     *
-     * @return string
-     */
-    private function view(string $template): string
-    {
-        $path = tempnam(sys_get_temp_dir(), 'motor-orm-view');
-        file_put_contents($path, $template);
-
-        return $path;
-    }
 }

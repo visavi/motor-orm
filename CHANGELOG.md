@@ -55,6 +55,18 @@ them it is the first page.
 Pagination::resolvePageUsing(static fn (string $name) => $_GET[$name] ?? 1);
 ```
 
+**`links()` and the bundled Bootstrap 5 template are gone.** An orm that reads
+csv shipped markup for a css framework, and rendering — including the output
+buffering around it — lived in the library that holds the data. `pages()` gives
+the navigation as `Page` objects and the application prints it:
+
+```php
+echo $view->render('pagination', ['pages' => $articles->pages()]);
+```
+
+Escaping goes with the rendering: `Page::$url` is a plain string now, escaped
+by the template that prints it.
+
 **`Collection::__toString()` is gone.** Printing a collection gave back
 `Collection@0000...`, so `<?= $stories ?>` in a template quietly produced a
 hash instead of failing.

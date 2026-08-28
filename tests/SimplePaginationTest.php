@@ -146,18 +146,6 @@ final class SimplePaginationTest extends TestCase
     }
 
     /**
-     * The built-in template renders the arrows as it renders anything else
-     */
-    public function testLinks(): void
-    {
-        $links = new SimplePagination(self::rows(10), 10, 3, true)->withPath('/stories')->links();
-
-        $this->assertStringContainsString('pagination', $links);
-        $this->assertStringContainsString('href="/stories?page=2"', $links);
-        $this->assertStringContainsString('href="/stories?page=4"', $links);
-    }
-
-    /**
      * The url of the page before this one, dropping the parameter on the first
      */
     public function testUrl(): void
@@ -199,7 +187,7 @@ final class SimplePaginationTest extends TestCase
         $this->assertTrue($find->hasMorePages());
 
         $find->withPath('/list')->appends(['q' => 'x']);
-        $this->assertStringContainsString('/list?q=x', $find->links());
+        $this->assertSame('/list?q=x', $find->pages()[0]->url);
     }
 
     /**

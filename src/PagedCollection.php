@@ -53,9 +53,6 @@ abstract class PagedCollection extends Collection
     /** Query parameters every link carries along */
     protected(set) array $appends = [];
 
-    /** Template the links are rendered with */
-    protected string $viewPath = __DIR__ . '/views/bootstrap5.php';
-
     /**
      * @param array $items the rows of the page
      * @param int   $limit rows on a page
@@ -180,36 +177,6 @@ abstract class PagedCollection extends Collection
     public function url(int $page): string
     {
         return $this->buildUrl(max(1, $page));
-    }
-
-    /**
-     * Get rendered links
-     *
-     * @param string|null $view a template for this call, the built-in one by default
-     *
-     * @return string
-     */
-    public function links(?string $view = null): string
-    {
-        /*
-         * A template renders, so it is handed the pages and nothing else. The
-         * arguments are the scope the template is given: $pages is what it
-         * iterates, and being static this closure keeps $this away from it
-         */
-        $render = static function (string $view, array $pages): void {
-            include $view;
-        };
-
-        ob_start();
-
-        try {
-            $render($view ?? $this->viewPath, $this->pages());
-        } finally {
-            /* A template that blew up leaves no buffer behind */
-            $html = ob_get_clean();
-        }
-
-        return $html;
     }
 
     /**
