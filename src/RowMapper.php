@@ -9,7 +9,7 @@ use JsonException;
 use UnexpectedValueException;
 
 /**
- * Translator between a row of the file and the values of a record
+ * Translator between a row of the file and the values of a model
  *
  * A table stores strings and nothing else. Coming in, a row is named after the
  * columns and turned into the types the model declared; going out, whatever
@@ -19,7 +19,7 @@ use UnexpectedValueException;
  * @link    https://visavi.net
  * @author  Alexander Grigorev <admin@visavi.net>
  */
-final readonly class RecordMapper
+final readonly class RowMapper
 {
     /**
      * @param Model $model the table the values belong to
@@ -31,7 +31,7 @@ final readonly class RecordMapper
     ) {}
 
     /**
-     * Turn one row into the values of a record
+     * Turn one row into the values of a model
      *
      * @param array $record
      *

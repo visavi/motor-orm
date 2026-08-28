@@ -29,7 +29,7 @@ final class Query
     public function __construct(private readonly Model $model)
     {
         $this->table      = new Table($model);
-        $this->mapper     = new RecordMapper($model, $this->table);
+        $this->mapper     = new RowMapper($model, $this->table);
         $this->conditions = new Conditions();
         $this->sorter     = new Sorter($this->table);
         $this->writer     = new TableWriter($this->table, $this->mapper, $this->conditions);
@@ -40,7 +40,7 @@ final class Query
     private readonly Table $table;
 
     /** Rows in, values out */
-    private readonly RecordMapper $mapper;
+    private readonly RowMapper $mapper;
 
     /** What the rows have to satisfy */
     private readonly Conditions $conditions;
@@ -354,15 +354,15 @@ final class Query
      *
      * @param int|string $id
      *
-     * @return Record|null
+     * @return Model|null
      */
-    public function find(int|string $id): ?Record
+    public function find(int|string $id): ?Model
     {
         if ($this->conditions->isEmpty() && $this->sorter->isEmpty() && $this->offset === 0) {
             $row = $this->search->row((string) $id);
 
             if ($row !== null) {
-                return $this->record($this->mapper->read($row));
+                return $this->row($this->mapper->read($row));
             }
         }
 
@@ -372,9 +372,9 @@ final class Query
     /**
      * Get first record
      *
-     * @return Record|null
+     * @return Model|null
      */
-    public function first(): ?Record
+    public function first(): ?Model
     {
         /* The first row of the read, and a read may be told where it starts */
         $iterator = new LimitIterator($this->pipeline($this->offset + 1), $this->offset, 1);
@@ -385,7 +385,7 @@ final class Query
             return null;
         }
 
-        return $this->record($this->mapper->read($iterator->current()));
+        return $this->row($this->mapper->read($iterator->current()));
     }
 
     /**
@@ -396,17 +396,17 @@ final class Query
      *
      * @param array $values column name => value
      *
-     * @return Record
+     * @return Model
      */
-    private function record(array $values): Record
+    private function row(array $values): Model
     {
-        $record = $this->model->newRecord($this, $values);
+        $row = $this->model->newRow($this, $values);
 
         foreach ($this->with as $with => $constraint) {
-            $this->loadRelation([$record], $with, $constraint);
+            $this->loadRelation([$row], $with, $constraint);
         }
 
-        return $record;
+        return $row;
     }
 
     /**
@@ -443,17 +443,17 @@ final class Query
      * load a relation for: touching one inside the loop reads the related
      * table once per record, and with() has nothing to attach to
      *
-     * @return Generator<Record>
+     * @return Generator<Model>
      */
     public function cursor(): Generator
     {
         $iterator = $this->limited($this->pipeline($this->take($this->offset, $this->limit)), $this->offset, $this->limit);
 
         $reader = $this->mapper->reader();
-        $record = $this->model->recordClass();
+        $row = $this->model;
 
         foreach ($iterator as $line) {
-            yield new $record($this, $reader($line));
+            yield $row->newRow($this, $reader($line));
         }
     }
 
@@ -594,11 +594,11 @@ final class Query
      *
      * @param array $values
      *
-     * @return Record
+     * @return Model
      */
-    public function create(array $values): Record
+    public function create(array $values): Model
     {
-        return $this->model->newRecord($this, $this->writer->insert($values));
+        return $this->model->newRow($this, $this->writer->insert($values));
     }
 
     /**
@@ -716,16 +716,16 @@ final class Query
      *
      * @param iterable $values
      *
-     * @return Record[]
+     * @return Model[]
      */
     private function hydrate(iterable $values): array
     {
         $reader = $this->mapper->reader();
-        $record = $this->model->recordClass();
+        $row = $this->model;
 
         $rows = [];
         foreach ($values as $line) {
-            $rows[] = new $record($this, $reader($line));
+            $rows[] = $row->newRow($this, $reader($line));
         }
 
         $this->siblings($rows);
@@ -746,7 +746,7 @@ final class Query
      * relation touched on a record long after still loads for the records it
      * was read with, and the query is free to read something else meanwhile
      *
-     * @param array<Record> $rows
+     * @param array<Model> $rows
      *
      * @return void
      */

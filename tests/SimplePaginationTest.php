@@ -3,10 +3,10 @@
 namespace MotorORM\Tests;
 
 use MotorORM\Page;
-use MotorORM\Record;
 use MotorORM\SimplePagination;
 use MotorORM\Tests\Models\Article;
 use MotorORM\Tests\Models\Story;
+use MotorORM\Tests\Models\User;
 
 final class SimplePaginationTest extends TestCase
 {
@@ -251,7 +251,7 @@ final class SimplePaginationTest extends TestCase
         $this->assertTrue($find->hasMorePages());
 
         foreach ($find as $story) {
-            $this->assertInstanceOf(Record::class, $story->user);
+            $this->assertInstanceOf(User::class, $story->user);
             $this->assertEquals($story->user_id, $story->user->id);
         }
     }

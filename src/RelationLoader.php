@@ -28,7 +28,7 @@ final readonly class RelationLoader
     /**
      * Attach a relation to every row
      *
-     * @param array<Record> $rows
+     * @param array<Model> $rows
      * @param string        $with       name the relation is declared under
      * @param Closure|null  $constraint narrows this one read of the relation
      *
@@ -81,10 +81,10 @@ final readonly class RelationLoader
                 continue;
             }
 
-            /* A missing hasOne gives an empty record, never null */
+            /* A missing hasOne gives an empty row, never null */
             if ($found === null) {
                 $emptyQuery ??= $model::query();
-                $found = $emptyQuery->model()->newRecord($emptyQuery);
+                $found = $emptyQuery->model()->newRow($emptyQuery);
             }
 
             $row->setRelation($with, $found);

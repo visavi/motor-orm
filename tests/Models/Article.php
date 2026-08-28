@@ -19,6 +19,16 @@ class Article extends Model
     public string $table = __DIR__ . '/../../tests/data/articles.csv';
 
     /**
+     * Something a row of this table can answer, living in the model itself
+     *
+     * @return string
+     */
+    public function shout(): string
+    {
+        return mb_strtoupper((string) $this->title);
+    }
+
+    /**
      * Scope without parameters
      *
      * @param Query $query

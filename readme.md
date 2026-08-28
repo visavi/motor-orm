@@ -28,17 +28,16 @@ composer require visavi/motor-orm
 
 ## Quick start
 
-The library is three things:
+The library is two things:
 
-|            | what it is                    | what it carries                                      |
-|------------|-------------------------------|------------------------------------------------------|
-| **Model**  | `class Article extends Model` | path to the file, casts, scopes, relations           |
-| **Query**  | `Article::query()`            | conditions, sorting, pagination, writing             |
-| **Record** | `$article`                    | the values of a row, `save()`, `delete()`, relations |
+|           | what it is                                  | what it carries                                                       |
+|-----------|---------------------------------------------|-----------------------------------------------------------------------|
+| **Model** | `class Article extends Model`, `$article`   | the table, casts, scopes, relations — and the values of one row        |
+| **Query** | `Article::query()`                          | conditions, sorting, pagination, writing                              |
 
-A model reads nothing until it is asked to. A query opens the file on the first
-read, not when it is built. A record knows its own row and the query it came
-from, and nothing else.
+A model declares the table and, once read, is a row of it: whatever a row can
+answer is a method of the model. What it never carries is the query that found
+it — conditions live in `Query`, so a row cannot read the table by accident.
 
 ```php
 use MotorORM\Model;
@@ -149,7 +148,7 @@ php benchmarks/compare.php --rows=200000 --runs=5
 ### What it costs in memory
 
 A csv row costs several times more in memory than in the file: an array of five
-columns is about 440 bytes, a `Record` on top of it about 690. A file of 41 MB,
+columns is about 440 bytes, the model holding it about 690. A file of 41 MB,
 read whole, takes 347 MB.
 
 So what runs out is not the size of the table but the size of the result:
@@ -214,11 +213,11 @@ Article::query()->headers();
 Article::query()->find(1)->toArray();
 ```
 
-`find()` and `first()` return a `Record` or `null`. `get()` always returns a
-[Collection](#collection) of records, empty if nothing matched.
+`find()` and `first()` return the model or `null`. `get()` always returns a
+[Collection](#collection) of them, empty if nothing matched.
 
-A record holds the values of one row and knows how to write itself back, but it
-carries no conditions and runs no queries of its own:
+A row holds its values and knows how to write itself back, but carries no
+conditions and runs no queries of its own:
 
 ```php
 $article = Article::query()->find(1);
@@ -230,38 +229,36 @@ $article->update(['text' => 'New text']);
 $article->delete();
 $article->fresh();               // read again, dropping the unsaved changes
 $article->toArray();
+
+$new = new Article();            // a row nothing has written yet
+$new->title = 'New title';
+$new->save();                    // inserted, and given the key of the table
 ```
 
 `exists()` and `first()` stop reading at the first match, so they cost almost
 nothing on a record near the top of the file.
 
-### A record of your own
+### What a row can answer
 
-A record is a plain `Record` unless the model names a class of its own. Whatever
-a row of the table can answer belongs there — a query gives back that class
-wherever it makes a record, a relation included:
+Whatever a row of the table can say about itself is a method of the model, next
+to the columns it reads:
 
 ```php
 class Article extends Model
 {
     public string $table = 'articles.csv';
 
-    protected string $record = ArticleRecord::class;
-}
-
-class ArticleRecord extends Record
-{
     public function excerpt(int $words = 30): string
     {
         return implode(' ', array_slice(explode(' ', $this->text), 0, $words));
     }
 }
 
-Article::query()->find(1)->excerpt();   // ArticleRecord
+Article::query()->find(1)->excerpt();
 ```
 
-The class is checked once per model: a name that is not a `Record` throws an
-`UnexpectedValueException`.
+A relation is read into its own model the same way, so `$article->user` answers
+everything `User` does.
 
 ### Finding by key
 

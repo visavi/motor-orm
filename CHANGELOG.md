@@ -4,6 +4,62 @@
 
 ### Breaking
 
+**A model is the row it reads again, `Record` is gone.** 5.0 split the model in
+three and left the behaviour of a row homeless: a column belonged to `Record`,
+so anything a row could say about itself had to live in a class beside the
+model. One table meant two files, and the smaller the model the more the split
+cost.
+
+A model declares the table and, once read, holds the values of one row.
+Whatever a row can answer is a method of the model, next to the columns.
+
+```php
+class Article extends Model
+{
+    public string $table = 'articles.csv';
+
+    public function excerpt(int $words = 30): string
+    {
+        return implode(' ', array_slice(explode(' ', $this->text), 0, $words));
+    }
+}
+
+$article = Article::query()->find(1);   // Article
+$article->excerpt();
+```
+
+What 5.0 gained is kept: a row still carries no conditions. `where()`,
+`orderBy()`, `limit()` and the rest belong to `Query` alone, so a row cannot
+read the table by accident, and a relation is still only a method that says it
+returns `Relation`.
+
+`find()`, `first()`, `get()`, `cursor()`, `create()` and every relation give
+back the model. `Record::fresh()`, `save()`, `delete()`, `update()`, `key()`,
+`toArray()`, `relationLoaded()` and `newQuery()` are the same methods on the
+model. `RecordMapper` is `RowMapper`.
+
+### Added
+
+- **`save()` inserts a row that has no key yet**, so a model built by hand is
+  written the same way as one that was read.
+
+```php
+$article = new Article();
+$article->title = 'New title';
+$article->save();               // inserted, and given the key of the table
+```
+
+- **`Model::newRow()`** — one row of the table holding the given values, and
+  **`Model::primaryKey()`** — name of the column the keys live in.
+
+### Fixed
+
+**`pluck()` no longer loses rows whose column is empty.** `array_column()` asks
+an object for `__isset()`, which answers false for null, so a row with an empty
+value fell out of the result along with its key: a settings table of 43 rows,
+one of them empty, gave back 42. The values are read directly now, and an empty
+column keeps its place as null.
+
 **`SplFileObject` is gone, `MotorORM\CsvFile` stands in its place.** Php 8.6
 deprecates `SplFileObject::fgetcsv()`, `fputcsv()`, `setCsvControl()` and
 `getCsvControl()`, and csv is all the orm ever opened a file for. `CsvFile` is

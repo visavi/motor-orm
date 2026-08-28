@@ -9,11 +9,12 @@ use ReflectionNamedType;
 use UnexpectedValueException;
 
 /**
- * Declaration of a table
+ * A table and one row of it
  *
  * A model says where the data lives, what the columns mean and what the table
- * is related to. Reading and writing is the business of Query, which a model
- * hands out and never becomes
+ * is related to, and an instance read from the file holds the values of one
+ * row. Reading is the business of Query: a model hands one out and carries no
+ * conditions of its own, so a row never drags the query that found it along
  *
  * @license Code and contributions have MIT License
  * @link    https://visavi.net
@@ -37,20 +38,25 @@ abstract class Model
     /** Column name => cast */
     protected array $casts = [];
 
+    /** Column name => value, empty until the model is read from the file */
+    private(set) array $attr = [];
+
+    /** The query the row was read with, null for a model that is only a table */
+    private ?Query $query = null;
+
+    /** Relations already loaded on this row */
+    private array $relations = [];
+
     /**
-     * Class the rows of this table are read into
+     * The rows this one was read together with, itself among them
      *
-     * A record holds the values of a row, so whatever a row of this table can
-     * answer belongs here. Naming a class of your own, descended from Record,
-     * makes every read of this table give it back
+     * A relation touched later is loaded for the whole result at once, and the
+     * result is the one the row came from, not whatever its query read last
      */
-    protected string $record = Record::class;
+    private array $siblings = [];
 
     /** Model and method name => whether the method is a relation */
     private static array $relationNames = [];
-
-    /** Model name => the record class it declares, once it has been checked */
-    private static array $recordClasses = [];
 
     /**
      * Begin querying the model
@@ -93,48 +99,27 @@ abstract class Model
     }
 
     /**
-     * Name of the class the rows of this table are read into
+     * One row of this table, holding the given values
      *
-     * Checked once per model: a whole result goes through the same class, and
-     * a check a row would cost a lookup a row
+     * The declaration is the same for every row, so a row is a copy of the
+     * model that was asked, and whatever a model of this table can answer a
+     * row answers too
      *
-     * @return string
-     */
-    public function recordClass(): string
-    {
-        return self::$recordClasses[static::class] ??= $this->checkedRecordClass();
-    }
-
-    /**
-     * Build one record of this table
-     *
-     * @param Query $query the query the record is read with
+     * @param Query $query the query the row is read with
      * @param array $attr  column name => value
      *
-     * @return Record
+     * @return static
      */
-    public function newRecord(Query $query, array $attr = []): Record
+    public function newRow(Query $query, array $attr = []): static
     {
-        $class = $this->recordClass();
+        $row = clone $this;
 
-        return new $class($query, $attr);
-    }
+        $row->query     = $query;
+        $row->attr      = $attr;
+        $row->relations = [];
+        $row->siblings  = [];
 
-    /**
-     * The declared record class, once it is known to be one
-     *
-     * @return string
-     */
-    private function checkedRecordClass(): string
-    {
-        if (! is_a($this->record, Record::class, true)) {
-            throw new UnexpectedValueException(sprintf(
-                '%s() record class "%s" of model "%s" is not a %s',
-                __METHOD__, $this->record, static::class, Record::class
-            ));
-        }
-
-        return $this->record;
+        return $row;
     }
 
     /**
@@ -223,6 +208,178 @@ abstract class Model
             $secondForeignKey,
             $secondLocalKey,
         );
+    }
+
+    /**
+     * A fresh query on the same table
+     *
+     * @return Query
+     */
+    public function newQuery(): Query
+    {
+        return static::query();
+    }
+
+    /**
+     * Read the row from the table again, dropping the unsaved changes
+     *
+     * @return static|null null when the row is no longer there
+     */
+    public function fresh(): ?static
+    {
+        return $this->newQuery()->find($this->key());
+    }
+
+    /**
+     * Write the values of the row back to the table
+     *
+     * A row that has no key yet is one nothing has written: it is inserted,
+     * and the key the table hands out becomes its own
+     *
+     * @return bool whether the row was written
+     */
+    public function save(): bool
+    {
+        if ($this->key() === null) {
+            $this->attr = $this->newQuery()->create($this->attr)->toArray();
+
+            return true;
+        }
+
+        return $this->newQuery()->save($this->attr);
+    }
+
+    /**
+     * Remove the row from the table
+     *
+     * @return int affected rows
+     */
+    public function delete(): int
+    {
+        return $this->newQuery()->where($this->primaryKey(), $this->key())->delete();
+    }
+
+    /**
+     * Change the given columns of the row
+     *
+     * @param array $values
+     *
+     * @return int affected rows
+     */
+    public function update(array $values): int
+    {
+        $affected = $this->newQuery()->where($this->primaryKey(), $this->key())->update($values);
+
+        $this->attr = array_replace($this->attr, $values);
+
+        return $affected;
+    }
+
+    /**
+     * Value of the primary key
+     *
+     * @return int|string|null null for a row nothing has written yet
+     */
+    public function key(): int|string|null
+    {
+        return $this->attr[$this->primaryKey()] ?? null;
+    }
+
+    /**
+     * Name of the first column, the one the keys live in
+     *
+     * @return string|null
+     */
+    public function primaryKey(): ?string
+    {
+        return ($this->query ?? $this->newQuery())->getPrimaryKey();
+    }
+
+    /**
+     * The row as a plain array
+     *
+     * @return array
+     */
+    public function toArray(): array
+    {
+        return $this->attr;
+    }
+
+    /**
+     * Whether the relation has already been loaded on this row
+     *
+     * @param string $relation
+     *
+     * @return bool
+     */
+    public function relationLoaded(string $relation): bool
+    {
+        return array_key_exists($relation, $this->relations);
+    }
+
+    /**
+     * Tell the row what it was read together with
+     *
+     * @param array<static> $rows
+     *
+     * @return void
+     */
+    public function setSiblings(array $rows): void
+    {
+        $this->siblings = $rows;
+    }
+
+    /**
+     * Attach a loaded relation
+     *
+     * @param string $relation
+     * @param mixed  $value
+     *
+     * @return void
+     */
+    public function setRelation(string $relation, mixed $value): void
+    {
+        $this->relations[$relation] = $value;
+    }
+
+    /**
+     * @param string $field
+     *
+     * @return mixed
+     */
+    public function __get(string $field): mixed
+    {
+        if (! array_key_exists($field, $this->attr) && $this->isRelation($field)) {
+            if (! array_key_exists($field, $this->relations)) {
+                /* Loading it for every row of the same result costs one query, not one per row */
+                ($this->query ?? $this->newQuery())->loadRelation($this->siblings ?: [$this], $field);
+            }
+
+            return $this->relations[$field];
+        }
+
+        return $this->attr[$field] ?? null;
+    }
+
+    /**
+     * @param string $field
+     * @param mixed  $value
+     *
+     * @return void
+     */
+    public function __set(string $field, mixed $value): void
+    {
+        $this->attr[$field] = $value;
+    }
+
+    /**
+     * @param string $field
+     *
+     * @return bool
+     */
+    public function __isset(string $field): bool
+    {
+        return isset($this->attr[$field]);
     }
 
     /**

@@ -22,12 +22,12 @@ final readonly class TableWriter
 {
     /**
      * @param Table        $table      the file being written
-     * @param RecordMapper $mapper     values in, strings out
+     * @param RowMapper $mapper     values in, strings out
      * @param Conditions   $conditions which rows a write is meant for
      */
     public function __construct(
         private Table        $table,
-        private RecordMapper $mapper,
+        private RowMapper $mapper,
         private Conditions   $conditions,
     ) {}
 
