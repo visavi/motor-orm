@@ -25,4 +25,14 @@ class User extends Model
     {
         return $this->hasMany(Story::class);
     }
+
+    /**
+     * Story relation, keys left to the defaults
+     *
+     * @return Relation
+     */
+    public function story(): Relation
+    {
+        return $this->hasOne(Story::class);
+    }
 }

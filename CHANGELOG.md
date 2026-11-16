@@ -1,5 +1,16 @@
 # Changelog
 
+## 6.0.2
+
+### Fixed
+
+**`hasOne` with no keys given reads the related table by the key of the
+parent.** `User::hasOne(Story::class)` looked for `stories.story_id`, a column
+named after the related model itself, which no table has, so the relation
+threw `UnexpectedValueException` on its first read. It now reads
+`stories.user_id = users.id`, the same keys `hasMany` takes. A relation that
+names its keys is unchanged.
+
 ## 6.0.1
 
 ### Fixed

@@ -97,14 +97,7 @@ class Relation
     {
         $related = $this->model;
 
-        $this->localKey ??= $parent->getPrimaryKey();
-
-        if ($this->type === RelationType::HasOne) {
-            $this->foreignKey ??= $related::query()->getForeignKey();
-
-            return $this;
-        }
-
+        $this->localKey   ??= $parent->getPrimaryKey();
         $this->foreignKey ??= $parent->getForeignKey();
 
         if ($this->type === RelationType::HasManyThrough) {

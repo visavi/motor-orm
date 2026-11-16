@@ -36,6 +36,26 @@ final class RelationTest extends TestCase
     }
 
     /**
+     * hasOne with no keys given reads the related table by the key of the parent
+     */
+    public function testHasOneDefaultKeys(): void
+    {
+        $this->assertSame('Story1', User::query()->find(1)->story->title);
+        $this->assertSame('Story3', User::query()->find(2)->story->title);
+    }
+
+    /**
+     * The same defaults hold when the relation is loaded with the query
+     */
+    public function testHasOneDefaultKeysEager(): void
+    {
+        $users = User::query()->with('story')->get();
+
+        $this->assertSame('Story1', $users[0]->story->title);
+        $this->assertSame('Story3', $users[1]->story->title);
+    }
+
+    /**
      * Lazy loaded hasMany relation
      *
      */
